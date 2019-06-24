@@ -33,7 +33,7 @@ def feedback_handler(bot, update, args=None):
     Store feedback from users in a text file.
     """
     if args and len(args) > 0:
-        feedback = open("ignore/feedback.txt", "a")
+        feedback = open("data/feedback.txt", "a")
         feedback.write("\n")
         feedback.write(update.message.from_user.first_name)
         feedback.write("\n")
