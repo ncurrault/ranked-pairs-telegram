@@ -12,6 +12,9 @@ from enum import Enum
 with open("data/token.txt", "r") as f:
     API_KEY = f.read().rstrip()
 
+with open("data/username.txt", "r") as f:
+    USERNAME = f.read().rstrip()
+
 def get_static_handler(command):
     """
     Given a string command, returns a CommandHandler for that string that
@@ -54,7 +57,7 @@ def handle_error(bot, update, error):
     try:
         raise error
     except TelegramError:
-        logging.getLogger(__name__).warning('TelegramError! %s caused by this update: %s', error, update)
+        logging.getLogger(__name__).warning('TelegramError! %s caused by this update:\n%s', error, update)
 
 
 active_polls = {}
@@ -73,37 +76,58 @@ class Poll:
 
     def call_election(self):
         # TODO actually implement ranked pairs
-        return [{n} for n in range(self.n_options)]
+        return [0]
+        # desired output for v1: just the winners
+        # return [{n} for n in range(self.n_options)]
         # desired output: ranking of all candidates (possibly with equalities)
 
 class Vote:
-    def __init__(self, n_options, first_choices):
-        self.option_rankings = { i: 0 for i in range(n_options) }
-        self.n_options = n_options
+    def __init__(self, poll):
+        self.poll = poll
+        self.option_rankings = [0] * len(poll.options)
+        self.current_rank = 1
+        self.finalized = False
 
-    def extend_vote(self, option, rank):
+    def inc_current_rank(self):
+        self.current_rank = (self.current_rank + 1) % len(poll.options)
+
+    def toggle_ranking(self, option):
         if option < 0 or option >= n_options:
             raise InvalidInput("invalid option!")
-        elif rank < 0 or rank > n_options:
-            raise InvalidInput("invalid rank!")
 
-        self.option_rankings[option] = n_options - rank
+        if self.option_rankings[option] == self.current_rank:
+            self.option_rankings[option] = 0
+        else:
+            self.option_rankings[option] = self.current_rank
 
-class DMType(Enum):
-    UNKNOWN = 0
-    CREATING = 1
-    VOTING = 2
+    def finalize(self):
+        if self.finalized:
+            raise InvalidInput("Vote already finalized!")
+
+        self.finalized = True
+        self.option_rankings = [ \
+            len(poll.options) - rank if rank > 0 else 0 \
+            for rank in option_rankings \
+        ]
 
 class CreationStatus(Enum):
     WAITING = 1
-    WAITING_RESULT_TYPE = 2
+    CHOOSING_RESULT_TYPE = 2
     WRITING_QUESTION = 3
-    WRITING_OPTION = 4
-    MORE_OPTIONS = 5
+    WRITING_OPTIONS = 4
 
 
 def new_poll_handler(bot, update, chat_data):
-    pass # TODO
+    if update.message.chat.type == "private":
+        bot.send_message(chat_id=update.message.chat.id,
+            text="Let's make a ranked-pairs poll! Send /cancel at any time to stop.")
+        bot.send_message(chat_id=update.message.chat.id,
+            text="Would you like the poll results to appear live or only when it is closed?")
+        # TODO custom keyboard replies: "Live Results" or "When Closed"
+
+        chat_data["create_status"] = CreationStatus.CHOOSING_RESULT_TYPE
+    else:
+        update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs](t.me/{USERNAME}) to start a poll.")
 
 def poll_done_handler(bot, update, chat_data):
     pass # TODO
@@ -121,10 +145,10 @@ if __name__ == "__main__":
     updater = Updater(token=API_KEY)
     dispatcher = updater.dispatcher
 
-    dispatcher.add_handler(get_static_handler("start"))
+    dispatcher.add_handler(get_static_handler("help"))
     dispatcher.add_handler(CommandHandler('feedback', feedback_handler, pass_args=True))
 
-    dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler, pass_chat_data=True))
+    dispatcher.add_handler(CommandHandler('start', new_poll_handler, pass_chat_data=True))
     dispatcher.add_handler(CommandHandler('done', new_poll_handler, pass_chat_data=True))
     dispatcher.add_handler(CommandHandler('cancel', cancel_handler, pass_chat_data=True))
 
