@@ -82,7 +82,7 @@ class Poll:
         # desired output: ranking of all candidates (possibly with equalities)
 
 class Vote:
-    def __init__(self, poll):
+    def __init__(self, user, poll):
         self.poll = poll
         self.option_rankings = [0] * len(poll.options)
         self.current_rank = 1
@@ -117,7 +117,7 @@ class CreationStatus(Enum):
     WRITING_OPTIONS = 4
 
 
-def new_poll_handler(bot, update, chat_data):
+def new_poll_handler(bot, update, user_data):
     if update.message.chat.type == "private":
         bot.send_message(chat_id=update.message.chat.id,
             text="Let's make a ranked-pairs poll! Send /cancel at any time to stop.")
@@ -129,13 +129,13 @@ def new_poll_handler(bot, update, chat_data):
     else:
         update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs](t.me/{USERNAME}) to start a poll.")
 
-def poll_done_handler(bot, update, chat_data):
+def poll_done_handler(bot, update, user_data):
     pass # TODO
 
-def cancel_handler(bot, update, chat_data):
+def cancel_handler(bot, update, user_data):
     pass # TODO
 
-def message_handler(bot, update, chat_data):
+def message_handler(bot, update, user_data):
     pass # TODO
 
 # TODO more handlers for button presses
@@ -148,11 +148,11 @@ if __name__ == "__main__":
     dispatcher.add_handler(get_static_handler("help"))
     dispatcher.add_handler(CommandHandler('feedback', feedback_handler, pass_args=True))
 
-    dispatcher.add_handler(CommandHandler('start', new_poll_handler, pass_chat_data=True))
-    dispatcher.add_handler(CommandHandler('done', new_poll_handler, pass_chat_data=True))
-    dispatcher.add_handler(CommandHandler('cancel', cancel_handler, pass_chat_data=True))
+    dispatcher.add_handler(CommandHandler('start', new_poll_handler, pass_user_data=True))
+    dispatcher.add_handler(CommandHandler('done', new_poll_handler, pass_user_data=True))
+    dispatcher.add_handler(CommandHandler('cancel', cancel_handler, pass_user_data=True))
 
-    dispatcher.add_handler(MessageHandler(Filters.text, message_handler, pass_chat_data=True))
+    dispatcher.add_handler(MessageHandler(Filters.text, message_handler, pass_user_data=True))
 
     dispatcher.add_error_handler(handle_error)
 
