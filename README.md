@@ -4,6 +4,8 @@ A telegram bot for running ranked-pairs polls on Telegram
 
 # Licenses
 
+Formatting inspiration from [@VoteBot](https://t.me/VoteBot).
+
 For countVotes.py (from https://github.com/cdosen/ranked-pairs):
 Copyright (c) 2018, Chris Dosen
 All rights reserved.
