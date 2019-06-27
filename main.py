@@ -1,5 +1,6 @@
 import telegram
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, \
+    InlineQueryHandler, CallbackQueryHandler
 from telegram.error import TelegramError
 import logging
 
@@ -208,7 +209,11 @@ def message_handler(bot, update, user_data):
                 msg = msg + " (or /done if there are no more options)"
             bot.send_message(chat_id=update.message.chat.id, text=msg)
 
-# TODO more handlers for button presses
+def inline_query_handler(bot, update, user_data):
+    pass
+
+def callback_handler(bot, update, user_data):
+    pass
 
 
 if __name__ == "__main__":
@@ -223,6 +228,9 @@ if __name__ == "__main__":
     dispatcher.add_handler(CommandHandler('cancel', cancel_handler, pass_user_data=True))
 
     dispatcher.add_handler(MessageHandler(Filters.text, message_handler, pass_user_data=True))
+
+    dispatcher.add_handler(InlineQueryHandler(inline_query_handler, pass_user_data=True))
+    dispatcher.add_handler(CallbackQueryHandler(callback_handler, pass_user_data=True))
 
     dispatcher.add_error_handler(handle_error)
 
