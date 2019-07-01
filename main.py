@@ -70,6 +70,14 @@ class Poll:
         self.options = options
         self.votes = {}
 
+        self.id = uuid.uuid4()
+        Poll.active_polls[self.id] = self
+
+    active_polls = {}
+    @classmethod
+    def poll_of_id(cls, id):
+        return active_polls.get(id)
+
     def __str__(self):
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
         option_lines = '\n'.join( map(lambda o: f"▫️ {o}\n", self.options) )
@@ -125,9 +133,6 @@ class CreationStatus(Enum):
     WRITING_QUESTION = 3
     WRITING_OPTIONS = 4
 
-
-active_polls = {}
-
 def new_poll_handler(bot, update, user_data):
     if update.message.chat.type == "private":
         user_data["create_status"] = CreationStatus.CHOOSING_RESULT_TYPE
@@ -147,9 +152,6 @@ def poll_done_handler(bot, update, user_data):
         if len(user_data["pending_options"]) >= 2:
             poll = Poll(user_data["pending_question"],
                 user_data["pending_options"], user_data["pending_results_live"])
-            poll_id = uuid.uuid4()
-            global active_polls
-            active_polls[poll_id] = poll
 
             bot.send_message(chat_id=update.message.chat.id,
                 text=f"Successfully created poll!")
