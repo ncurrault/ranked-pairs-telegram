@@ -15,6 +15,7 @@ with open("data/token.txt", "r") as f:
 
 with open("data/username.txt", "r") as f:
     USERNAME = f.read().rstrip()
+    DM_URL = f"http://t.me/{USERNAME}"
 
 def get_static_handler(command):
     """
@@ -63,14 +64,32 @@ def handle_error(bot, update, error):
 class InvalidInput(Exception):
     pass
 
+# TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
+def encode_callback(poll_id, option_idx, rank):
+    assert len(poll_id) == 36
+    option_idx = str(option_idx) if option_idx else ""
+    rank = str(rank) if rank else ""
+
+    return "{poll_id}:{option_idx}:{rank}"
+def decode_callback(s):
+    assert s.count(":") == 2
+    id = s[:s.find(":")]
+    option_idx = s[s.find(":") + 1: s.rfind(":")]
+    rank = s[s.rfind(":") + 1 :]
+
+    option_idx = int(option_idx) if option_idx.isdigit() else None
+    rank = int(rank) if rank.isdigit() else None
+    return id, option_idx, rank
+
 class Poll:
     def __init__(self, question, options, live_results):
         self.question = question
         self.live_results = live_results
+        self.ongoing = True
         self.options = options
         self.votes = {}
 
-        self.id = uuid.uuid4()
+        self.id = str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
         Poll.active_polls[self.id] = self
 
     active_polls = {}
@@ -78,11 +97,32 @@ class Poll:
     def poll_of_id(cls, id):
         return active_polls.get(id)
 
-    def __str__(self):
+    def get_short_description(self):
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
-        option_lines = '\n'.join( map(lambda o: f"▫️ {o}\n", self.options) )
+        return poll_type + "\n" + " / ".join(self.options)
+    def get_vote_button(self):
+        return telegram.InlineKeyboardButton(text="Vote",
+            callback_data=encode_callback(self.id, None, None))
+
+    def get_inline_result(self):
+        return telegram.InlineQueryResultDocument(id=self.id,
+            title=self.question, description=self.get_short_description(),
+            input_message_content=telegram.InputTextMessageContent(message_text=self.get_long_html_str(), parse_mode=telegram.ParseMode.HTML),
+            reply_markup=telegram.InlineKeyboardMarkup(inline_keyboard=[[ self.get_vote_button() ]]),
+            mime_type="application/zip", document_url=DM_URL) # URL actually only used to generate the preview
+    def get_long_html_str(self):
+        """
+        Get representation of a poll: question, options, result type, whether poll is ongoing
+        """
+        poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
+        option_lines = '\n'.join( map(lambda o: f"▫️ {o}\n", self.options) ) # TODO indicate winners when appropriate
+        poll_status = "ongoing poll" if self.ongoing else "closed poll"
+        # TODO last updated when
+
         return f"<b>{self.question}</b>\n" + \
-            f"<i>{poll_type}</i>\n\n" + option_lines
+            f"<i>{poll_type}</i>\n\n" + \
+            option_lines + \
+            f"\n<i>{poll_status}</i>"
         # TODO checked boxes next to winner(s)
 
     def add_vote(self, user):
@@ -144,7 +184,7 @@ def new_poll_handler(bot, update, user_data):
             text="Would you like the poll results to appear live or only when it is closed?",
             reply_markup=keyboard_options)
     else:
-        update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs](t.me/{USERNAME}) to start a poll.")
+        update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to start a poll.")
 
 def poll_done_handler(bot, update, user_data):
     status = user_data.get("create_status")
@@ -154,10 +194,23 @@ def poll_done_handler(bot, update, user_data):
                 user_data["pending_options"], user_data["pending_results_live"])
 
             bot.send_message(chat_id=update.message.chat.id,
-                text=f"Successfully created poll!")
-
+                text="Successfully created poll!")
             bot.send_message(chat_id=update.message.chat.id,
-                text=str(poll), parse_mode=telegram.ParseMode.HTML)
+                text=poll.get_long_html_str(), parse_mode=telegram.ParseMode.HTML)
+            # TODO buttons for closing, sharing, update (if live)
+
+            if "active_polls" not in user_data:
+                user_data["active_polls"] = set()
+
+            user_data["active_polls"].add(poll)
+            # bot.send_message(chat_id=update.message.chat.id,
+            #     text=str(poll), parse_mode=telegram.ParseMode.HTML,
+            #     reply_markup=telegram.InlineKeyboardMarkup([
+            #         [ telegram.InlineKeyboardButton(text="A", callback_data="a") ],
+            #         [ telegram.InlineKeyboardButton(text="B", callback_data="b") ],
+            #         [ telegram.InlineKeyboardButton(text="C", callback_data="c") ],
+            #         [ telegram.InlineKeyboardButton(text="Cancel Vote", callback_data="cancel") ],
+            #     ]))
 
             # TODO inline interface to show a summary of options, share, and close
 
@@ -212,10 +265,14 @@ def message_handler(bot, update, user_data):
             bot.send_message(chat_id=update.message.chat.id, text=msg)
 
 def inline_query_handler(bot, update, user_data):
-    pass
+    # TODO sample poll for testing
+    out_polls = [Poll("Question?", ["option 1", "option 2", "option 3"], True)] #user_data.get("active_polls", [])
+    output_options = [ poll.get_inline_result() for poll in out_polls ]
+    bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
 
 def callback_handler(bot, update, user_data):
-    pass
+    print(update.callback_query)
+    # TODO
 
 
 if __name__ == "__main__":
