@@ -70,7 +70,7 @@ def encode_callback(poll_id, option_idx, rank):
     option_idx = str(option_idx) if option_idx else ""
     rank = str(rank) if rank else ""
 
-    return "{poll_id}:{option_idx}:{rank}"
+    return f"{poll_id}:{option_idx}:{rank}"
 def decode_callback(s):
     assert s.count(":") == 2
     id = s[:s.find(":")]
