@@ -64,22 +64,44 @@ def handle_error(bot, update, error):
 class InvalidInput(Exception):
     pass
 
+
+class CallbackDataType(Enum):
+    STARTING_VOTE = 1
+    SELECTING_OPTION = 2
+    SELECTING_RANK = 3
+    SUBMITTING_VOTE = 4
+    RETRACTING_VOTE = 5
+    CLOSING_POLL = 6
+
 # TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
-def encode_callback(poll_id, option_idx, rank):
-    assert len(poll_id) == 36
-    option_idx = str(option_idx) if option_idx else ""
-    rank = str(rank) if rank else ""
+def encode_vote_start(poll_id):
+    return f"1:{poll_id}"
+def encode_option(poll_id, opt_idx):
+    return f"2:{poll_id}:{opt_idx}"
+def encode_rank(poll_id, rank):
+    return f"3:{poll_id}:{rank}"
+def encode_submit(poll_id):
+    return f"4:{poll_id}"
+def encode_retract(poll_id):
+    return f"5:{poll_id}"
+def encode_close(poll_id):
+    return f"6:{poll_id}"
 
-    return f"{poll_id}:{option_idx}:{rank}"
 def decode_callback(s):
-    assert s.count(":") == 2
-    id = s[:s.find(":")]
-    option_idx = s[s.find(":") + 1: s.rfind(":")]
-    rank = s[s.rfind(":") + 1 :]
-
-    option_idx = int(option_idx) if option_idx.isdigit() else None
-    rank = int(rank) if rank.isdigit() else None
-    return id, option_idx, rank
+    if s[0] == "1":
+        return CallbackDataType.STARTING_VOTE, s[2:]
+    elif s[0] == "2":
+        sep = s.rfind(":")
+        return CallbackDataType.SELECTING_OPTION, s[2:sep], int(s[sep+1:])
+    elif s[0] == "3":
+        sep = s.rfind(":")
+        return CallbackDataType.SELECTING_RANK, s[2:sep], int(s[sep+1:])
+    elif s[0] == "4":
+        return CallbackDataType.SUBMITTING_VOTE, s[2:]
+    elif s[0] == "5":
+        return CallbackDataType.RETRACTING_VOTE, s[2:]
+    elif s[0] == "6":
+        return CallbackDataType.CLOSING_POLL, s[2:]
 
 class Poll:
     def __init__(self, question, options, live_results):
@@ -102,7 +124,7 @@ class Poll:
         return poll_type + "\n" + " / ".join(self.options)
     def get_vote_button(self):
         return telegram.InlineKeyboardButton(text="Vote",
-            callback_data=encode_callback(self.id, None, None))
+            callback_data=encode_callback_voting(self.id, None, None))
 
     def get_inline_result(self):
         return telegram.InlineQueryResultDocument(id=self.id,
@@ -125,7 +147,7 @@ class Poll:
             f"\n<i>{poll_status}</i>"
         # TODO checked boxes next to winner(s)
 
-    def add_vote(self, user):
+    def add_vote(self, vote):
         if user not in self.votes:
             self.votes[user] = Vote(user, self)
         return self.votes[user]
@@ -140,22 +162,53 @@ class Poll:
 class Vote:
     def __init__(self, user, poll):
         self.poll = poll
+        self.user = user
         self.n_options = len(poll.options)
         self.option_rankings = [0] * self.n_options
-        self.current_rank = 1
+
         self.finalized = False
+        self.selected_option = None
 
-    def inc_current_rank(self):
-        self.current_rank = (self.current_rank + 1) % self.n_options
+    def __str__(self):
+        return "\n".join([
+            self.poll.options[i] + " - " + rank_to_str(self.option_rankings[i])
+            for i in range(self.n_options)
+        ])
 
-    def toggle_ranking(self, option):
+    @classmethod
+    def rank_to_str(cls, rank):
+        if rank == 0:
+            return "ABSTAIN"
+        else:
+            ones = rank % 10
+            if ones == 1:
+                return f"{rank}st"
+            elif ones == 2:
+                return f"{rank}nd"
+            elif ones == 3:
+                return f"{rank}rd"
+            else:
+                return f"{rank}th"
+
+    def tap_option(self, option):
         if option < 0 or option >= n_options:
             raise InvalidInput("invalid option!")
-
-        if self.option_rankings[option] == self.current_rank:
-            self.option_rankings[option] = 0
         else:
-            self.option_rankings[option] = self.current_rank
+            self.selected_option = option
+
+    def tap_rank(self, rank):
+        if rank < 0 or rank > n_options:
+            raise InvalidInput("invalid rank!")
+        if self.selected_option is None:
+            raise InvalidInput("must select option before rank!")
+        self.__set_ranking(self.selected_option, rank)
+        self.selected_option = None
+
+    def __set_ranking(self, option, rank):
+        self.option_rankings[option] = rank
+
+    def get_buttons(self):
+        pass # TODO
 
     def finalize(self):
         if self.finalized:
@@ -272,7 +325,27 @@ def inline_query_handler(bot, update, user_data):
 
 def callback_handler(bot, update, user_data):
     print(update.callback_query)
-    # TODO
+    decoded_data = decode_callback(update.callback_query.data)
+    req_type = decoded_data[0]
+    poll = Poll.poll_of_id(decoded_data[1])
+
+    if decoded_data[0] == CallbackDataType.STARTING_VOTE:
+        pass # TODO update buttons to have candidates
+    elif decoded_data[0] == CallbackDataType.SELECTING_OPTION:
+        opt = decoded_data[2] # TODO update buttons to store candidate and ask for rank
+    elif decoded_data[0] == CallbackDataType.SELECTING_RANK:
+        rank = decoded_data[2] # TODO update buttons to have candidates
+    elif decoded_data[0] == CallbackDataType.SUBMITTING_VOTE:
+        pass
+    elif decoded_data[0] == CallbackDataType.CLOSING_POLL:
+        pass
+
+    if poll_id in user_data:
+        vote = user_data[poll_id]
+    else:
+        pass # TODO make vote
+
+    # TODO the whole voting interface...
 
 
 if __name__ == "__main__":
