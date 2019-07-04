@@ -66,6 +66,7 @@ class InvalidInput(Exception):
 
 
 class CallbackDataType(Enum):
+    REFRESH = 0
     STARTING_VOTE = 1
     SELECTING_OPTION = 2
     SELECTING_RANK = 3
@@ -102,6 +103,8 @@ def decode_callback(s):
         return CallbackDataType.RETRACTING_VOTE, s[2:]
     elif s[0] == "6":
         return CallbackDataType.CLOSING_POLL, s[2:]
+    else:
+        return CallbackDataType.REFRESH
 
 class Poll:
     def __init__(self, question, options, live_results):
@@ -111,26 +114,34 @@ class Poll:
         self.options = options
         self.votes = {}
 
-        self.id = str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
+        self.id = "dcb25d75-4e00-41a5-b673-4faf20427fc6" # str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
         Poll.active_polls[self.id] = self
 
     active_polls = {}
     @classmethod
     def poll_of_id(cls, id):
-        return active_polls.get(id)
+        return Poll.active_polls.get(id)
 
     def get_short_description(self):
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
         return poll_type + "\n" + " / ".join(self.options)
-    def get_vote_button(self):
-        return telegram.InlineKeyboardButton(text="Vote",
-            callback_data=encode_callback_voting(self.id, None, None))
+    def get_unstarted_vote_buttons(self):
+        return telegram.InlineKeyboardMarkup([
+            [telegram.InlineKeyboardButton(text="Vote",
+                callback_data=encode_vote_start(self.id))],
+            [telegram.InlineKeyboardButton(text="Refresh Results", callback_data="0")]
+        ])
+    def get_buttons(self, user):
+        if user in self.votes:
+            return self.votes[user].get_button_data()
+        else:
+            return self.get_unstarted_vote_buttons()
 
     def get_inline_result(self):
         return telegram.InlineQueryResultDocument(id=self.id,
             title=self.question, description=self.get_short_description(),
             input_message_content=telegram.InputTextMessageContent(message_text=self.get_long_html_str(), parse_mode=telegram.ParseMode.HTML),
-            reply_markup=telegram.InlineKeyboardMarkup(inline_keyboard=[[ self.get_vote_button() ]]),
+            reply_markup=self.get_unstarted_vote_buttons(),
             mime_type="application/zip", document_url=DM_URL) # URL actually only used to generate the preview
     def get_long_html_str(self):
         """
@@ -147,10 +158,15 @@ class Poll:
             f"\n<i>{poll_status}</i>"
         # TODO checked boxes next to winner(s)
 
-    def add_vote(self, vote):
+    def add_vote(self, user):
         if user not in self.votes:
             self.votes[user] = Vote(user, self)
         return self.votes[user]
+
+    def remove_vote(self, user):
+        if user in self.votes:
+            del self.votes[user]
+
 
     def call_election(self):
         # TODO actually implement ranked pairs
@@ -207,8 +223,27 @@ class Vote:
     def __set_ranking(self, option, rank):
         self.option_rankings[option] = rank
 
-    def get_buttons(self):
-        pass # TODO
+    def get_button_data(self):
+        if self.finalized:
+            button_lst = [ telegram.InlineKeyboardButton(text="Retract Vote", callback_data=encode_retract(self.id)),
+                telegram.InlineKeyboardButton(text="Refresh Results", callback_data="0") ]
+        elif self.selected_option is None:
+            rankings = list(map(Vote.rank_to_str, self.option_rankings))
+            button_lst = [
+                telegram.InlineKeyboardButton(text=f"{options[i]} - {rankings[i]}", \
+                callback_data=encode_option(self.id, i)) \
+                for i in range(self.n_options) ]
+        else:
+            option_str = self.poll.options[self.selected_option]
+            button_lst = [ \
+                telegram.InlineKeyboardButton(text=f"Rank {option_str} {Vote.rank_to_str(i)}", \
+                callback_data=encode_rank(self.id, i)) \
+                for i in range(self.n_options + 1) ]
+            button_lst.append( # button to keep current ranking, effectively going back
+                telegram.InlineKeyboardButton(text=f"Back to option list",
+                callback_data=encode_rank(self.id, self.option_rankings[self.selected_option])))
+
+        return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ])
 
     def finalize(self):
         if self.finalized:
@@ -240,6 +275,14 @@ def new_poll_handler(bot, update, user_data):
         update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to start a poll.")
 
 def poll_done_handler(bot, update, user_data):
+    poll = Poll("Question?", ["option 1", "option 2", "option 3"], True)
+    if "active_polls" not in user_data:
+        user_data["active_polls"] = set()
+
+    user_data["active_polls"].add(poll)
+    # TODO TESTING ONLY
+    return
+
     status = user_data.get("create_status")
     if status == CreationStatus.WRITING_OPTIONS:
         if len(user_data["pending_options"]) >= 2:
@@ -256,14 +299,6 @@ def poll_done_handler(bot, update, user_data):
                 user_data["active_polls"] = set()
 
             user_data["active_polls"].add(poll)
-            # bot.send_message(chat_id=update.message.chat.id,
-            #     text=str(poll), parse_mode=telegram.ParseMode.HTML,
-            #     reply_markup=telegram.InlineKeyboardMarkup([
-            #         [ telegram.InlineKeyboardButton(text="A", callback_data="a") ],
-            #         [ telegram.InlineKeyboardButton(text="B", callback_data="b") ],
-            #         [ telegram.InlineKeyboardButton(text="C", callback_data="c") ],
-            #         [ telegram.InlineKeyboardButton(text="Cancel Vote", callback_data="cancel") ],
-            #     ]))
 
             # TODO inline interface to show a summary of options, share, and close
 
@@ -319,7 +354,7 @@ def message_handler(bot, update, user_data):
 
 def inline_query_handler(bot, update, user_data):
     # TODO sample poll for testing
-    out_polls = [Poll("Question?", ["option 1", "option 2", "option 3"], True)] #user_data.get("active_polls", [])
+    out_polls = user_data.get("active_polls", [])
     output_options = [ poll.get_inline_result() for poll in out_polls ]
     bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
 
@@ -328,24 +363,28 @@ def callback_handler(bot, update, user_data):
     decoded_data = decode_callback(update.callback_query.data)
     req_type = decoded_data[0]
     poll = Poll.poll_of_id(decoded_data[1])
+    user_id = update.callback_query.from_user.id
 
-    if decoded_data[0] == CallbackDataType.STARTING_VOTE:
-        pass # TODO update buttons to have candidates
-    elif decoded_data[0] == CallbackDataType.SELECTING_OPTION:
-        opt = decoded_data[2] # TODO update buttons to store candidate and ask for rank
-    elif decoded_data[0] == CallbackDataType.SELECTING_RANK:
-        rank = decoded_data[2] # TODO update buttons to have candidates
-    elif decoded_data[0] == CallbackDataType.SUBMITTING_VOTE:
-        pass
-    elif decoded_data[0] == CallbackDataType.CLOSING_POLL:
-        pass
+    print(decoded_data)
+    vote = poll.add_vote(user_id) # should generate vote if necessary
 
-    if poll_id in user_data:
-        vote = user_data[poll_id]
-    else:
-        pass # TODO make vote
+    if req_type == CallbackDataType.SELECTING_OPTION:
+        opt = decoded_data[2]
+        vote.tap_option(opt)
+    elif req_type == CallbackDataType.SELECTING_RANK:
+        rank = decoded_data[2]
+        vote.tap_rank(opt)
+    elif req_type == CallbackDataType.SUBMITTING_VOTE:
+        vote.finalize()
+    elif req_type == CallbackDataType.RETRACTING_VOTE:
+        poll.remove_vote(user_id)
+    elif req_type == CallbackDataType.CLOSING_POLL:
+        pass # TODO required functionality not yet implemented
 
-    # TODO the whole voting interface...
+    print(update.callback_query.inline_message_id)
+    update.callback_query.edit_message_text(poll.get_long_html_str(), parse_mode=telegram.ParseMode.HTML)
+    update.callback_query.edit_message_reply_markup()
+    update.callback_query.answer()
 
 
 if __name__ == "__main__":
