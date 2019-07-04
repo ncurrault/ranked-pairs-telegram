@@ -75,6 +75,8 @@ class CallbackDataType(Enum):
     CLOSING_POLL = 6
 
 # TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
+def encode_refresh(poll_id):
+    return f"0:{poll_id}"
 def encode_vote_start(poll_id):
     return f"1:{poll_id}"
 def encode_option(poll_id, opt_idx):
@@ -104,7 +106,7 @@ def decode_callback(s):
     elif s[0] == "6":
         return CallbackDataType.CLOSING_POLL, s[2:]
     else:
-        return CallbackDataType.REFRESH
+        return (CallbackDataType.REFRESH,)
 
 class Poll:
     def __init__(self, question, options, live_results):
@@ -129,7 +131,7 @@ class Poll:
         return telegram.InlineKeyboardMarkup([
             [telegram.InlineKeyboardButton(text="Vote",
                 callback_data=encode_vote_start(self.id))],
-            [telegram.InlineKeyboardButton(text="Refresh Results", callback_data="0")]
+            [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.id))]
         ])
     def get_buttons(self, user):
         if user in self.votes:
@@ -207,13 +209,13 @@ class Vote:
                 return f"{rank}th"
 
     def tap_option(self, option):
-        if option < 0 or option >= n_options:
+        if option < 0 or option >= self.n_options:
             raise InvalidInput("invalid option!")
         else:
             self.selected_option = option
 
     def tap_rank(self, rank):
-        if rank < 0 or rank > n_options:
+        if rank < 0 or rank > self.n_options:
             raise InvalidInput("invalid rank!")
         if self.selected_option is None:
             raise InvalidInput("must select option before rank!")
@@ -225,25 +227,30 @@ class Vote:
 
     def get_button_data(self):
         if self.finalized:
-            button_lst = [ telegram.InlineKeyboardButton(text="Retract Vote", callback_data=encode_retract(self.id)),
-                telegram.InlineKeyboardButton(text="Refresh Results", callback_data="0") ]
+            return telegram.InlineKeyboardMarkup([
+                [telegram.InlineKeyboardButton(text="Retract Vote", callback_data=encode_retract(self.poll.id))],
+                [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.poll.id))]
+            ])
         elif self.selected_option is None:
             rankings = list(map(Vote.rank_to_str, self.option_rankings))
             button_lst = [
-                telegram.InlineKeyboardButton(text=f"{options[i]} - {rankings[i]}", \
-                callback_data=encode_option(self.id, i)) \
+                telegram.InlineKeyboardButton(text=f"{self.poll.options[i]} - {rankings[i]}", \
+                callback_data=encode_option(self.poll.id, i)) \
                 for i in range(self.n_options) ]
         else:
             option_str = self.poll.options[self.selected_option]
             button_lst = [ \
                 telegram.InlineKeyboardButton(text=f"Rank {option_str} {Vote.rank_to_str(i)}", \
-                callback_data=encode_rank(self.id, i)) \
+                callback_data=encode_rank(self.poll.id, i)) \
                 for i in range(self.n_options + 1) ]
             button_lst.append( # button to keep current ranking, effectively going back
                 telegram.InlineKeyboardButton(text=f"Back to option list",
-                callback_data=encode_rank(self.id, self.option_rankings[self.selected_option])))
+                callback_data=encode_rank(self.poll.id, self.option_rankings[self.selected_option])))
 
-        return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ])
+        return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ] +
+            [[telegram.InlineKeyboardButton(text="Cancel", callback_data=encode_retract(self.poll.id)),
+            telegram.InlineKeyboardButton(text="Refresh", callback_data=encode_refresh(self.poll.id)) ]])
+            # always allow user to cancel vote
 
     def finalize(self):
         if self.finalized:
@@ -366,24 +373,30 @@ def callback_handler(bot, update, user_data):
     user_id = update.callback_query.from_user.id
 
     print(decoded_data)
-    vote = poll.add_vote(user_id) # should generate vote if necessary
 
-    if req_type == CallbackDataType.SELECTING_OPTION:
-        opt = decoded_data[2]
-        vote.tap_option(opt)
-    elif req_type == CallbackDataType.SELECTING_RANK:
-        rank = decoded_data[2]
-        vote.tap_rank(opt)
-    elif req_type == CallbackDataType.SUBMITTING_VOTE:
-        vote.finalize()
-    elif req_type == CallbackDataType.RETRACTING_VOTE:
-        poll.remove_vote(user_id)
-    elif req_type == CallbackDataType.CLOSING_POLL:
-        pass # TODO required functionality not yet implemented
+    if req_type == CallbackDataType.REFRESH:
+        try:
+            update.callback_query.edit_message_text(poll.get_long_html_str(), parse_mode=telegram.ParseMode.HTML)
+        except TelegramError:
+            pass # ignore error if message was not modified
+    else:
+        vote = poll.add_vote(user_id) # should generate vote if necessary
 
-    print(update.callback_query.inline_message_id)
-    update.callback_query.edit_message_text(poll.get_long_html_str(), parse_mode=telegram.ParseMode.HTML)
-    update.callback_query.edit_message_reply_markup()
+        if req_type == CallbackDataType.SELECTING_OPTION:
+            opt = decoded_data[2]
+            vote.tap_option(opt)
+        elif req_type == CallbackDataType.SELECTING_RANK:
+            rank = decoded_data[2]
+            vote.tap_rank(rank)
+        elif req_type == CallbackDataType.SUBMITTING_VOTE:
+            vote.finalize()
+        elif req_type == CallbackDataType.RETRACTING_VOTE:
+            poll.remove_vote(user_id)
+        elif req_type == CallbackDataType.CLOSING_POLL:
+            pass # TODO required functionality not yet implemented
+
+        update.callback_query.edit_message_reply_markup(reply_markup=poll.get_buttons(user_id))
+
     update.callback_query.answer()
 
 
