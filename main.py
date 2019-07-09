@@ -176,6 +176,9 @@ class Poll:
         # return [{n} for n in range(self.n_options)]
         # desired output: ranking of all candidates (possibly with equalities)
 
+    def update_winners(self):
+        pass
+
 class Vote:
     def __init__(self, user, poll):
         self.poll = poll
@@ -254,7 +257,6 @@ class Vote:
 
     def __set_ranking(self, option, rank):
         self.option_rankings[option] = rank
-        # TODO re-call election if live
 
     def get_button_data(self):
         if self.finalized:
@@ -314,6 +316,9 @@ class Vote:
             self.n_options - rank if rank > 0 else 0 \
             for rank in self.option_rankings \
         ]
+
+        if self.poll.live_results:
+            self.poll.update_winners()
 
 class CreationStatus(Enum):
     WAITING = 1
@@ -427,6 +432,7 @@ def callback_handler(bot, update, user_data):
 
     if req_type == CallbackDataType.REFRESH:
         try:
+            # TODO refresh with no update causes buttons to vanish?
             update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML)
         except TelegramError:
             pass # ignore error if message was not modified
