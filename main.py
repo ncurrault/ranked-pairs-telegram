@@ -4,6 +4,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, \
 from telegram.error import TelegramError
 import logging
 
+import datetime
 import uuid
 import sys
 import os
@@ -111,9 +112,10 @@ def decode_callback(s):
         raise InvalidInput(f"unknown callback: {s}")
 
 class Poll:
-    def __init__(self, question, options, live_results):
+    def __init__(self, question, options, live_results, owner):
         self.question = question
         self.live_results = live_results
+        self.owner = owner
         self.ongoing = True
         self.options = options
         self.votes = {}
@@ -133,7 +135,12 @@ class Poll:
             [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.id))]
         ])
     def get_admin_buttons(self):
-        pass # TODO buttons for closing poll, sending a ballot to the poll creator, refreshing results
+        return telegram.InlineKeyboardMarkup([ # TODO support poll title in inline query and pass it here
+            [telegram.InlineKeyboardButton(text="Close Poll", callback_data=encode_close(self.id))],
+            [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.id))],
+            [telegram.InlineKeyboardButton(text="Share Poll", switch_inline_query=""),
+            telegram.InlineKeyboardButton(text="Vote", callback_data=encode_vote_start(self.id))]
+        ])
 
     def get_inline_result(self):
         """
@@ -157,8 +164,14 @@ class Poll:
         return f"<b>{self.question}</b>\n" + \
             f"<i>{poll_type}</i>\n\n" + \
             option_lines + \
-            f"\n<i>{poll_status}</i>"
+            f"\n<i>{poll_status}</i>" + \
+            f"\n\n{datetime.datetime.strftime(datetime.datetime.now(), '%c')}"
         # TODO checked boxes next to winner(s)
+
+    def send_to_owner(self, bot):
+        bot.send_message(chat_id=self.owner,
+            text=self.get_html_repr(), parse_mode=telegram.ParseMode.HTML,
+            reply_markup=self.get_admin_buttons())
 
     def add_vote(self, user):
         if user not in self.votes:
@@ -340,7 +353,7 @@ def new_poll_handler(bot, update, user_data):
         update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to start a poll.")
 
 def poll_done_handler(bot, update, user_data):
-    poll = Poll("Question?", ["option 1", "option 2", "option 3"], True)
+    poll = Poll("Question?", ["option 1", "option 2", "option 3"], True, update.message.from_user.id)
     if "active_polls" not in user_data:
         user_data["active_polls"] = set()
 
@@ -356,10 +369,7 @@ def poll_done_handler(bot, update, user_data):
 
             bot.send_message(chat_id=update.message.chat.id,
                 text="Successfully created poll!")
-            bot.send_message(chat_id=update.message.chat.id,
-                text=poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML)
-            # TODO buttons for closing, sharing, update (if live)
-            # reply_markup=poll.get_admin_buttons()
+            poll.send_to_owner(bot)
 
             if "active_polls" not in user_data:
                 user_data["active_polls"] = set()
@@ -388,6 +398,18 @@ def cancel_handler(bot, update, user_data):
         bot.send_message(chat_id=update.message.chat.id,
             text="Cancelled! /start to try again",
             reply_markup=telegram.ReplyKeyboardRemove())
+
+def poll_list_handler(bot, update, user_data):
+    if update.message.chat.type == "private":
+        polls = user_data.get("active_polls", [])
+        if len(polls) == 0:
+            update.message.reply_text(text="You don't seem to have any active polls! You can make one with /newpoll")
+        else:
+            update.message.reply_text(text=f"You have {len(polls)} polls! Here they are:")
+            for poll in polls:
+                poll.send_to_owner(bot)
+    else:
+        update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to use this command.")
 
 def message_handler(bot, update, user_data):
     if "create_status" in user_data:
@@ -422,18 +444,18 @@ def inline_query_handler(bot, update, user_data):
     bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
 
 def callback_handler(bot, update, user_data):
-    print(update.callback_query)
     decoded_data = decode_callback(update.callback_query.data)
     req_type = decoded_data[0]
     poll = Poll.poll_of_id(decoded_data[1])
     user_id = update.callback_query.from_user.id
 
-    print(decoded_data)
-
     if req_type == CallbackDataType.REFRESH:
         try:
-            # TODO refresh with no update causes buttons to vanish?
             update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML)
+        except TelegramError:
+            pass # ignore error if message was not modified
+        try:
+            update.callback_query.edit_reply_markup(poll.get_ballot_html())
         except TelegramError:
             pass # ignore error if message was not modified
     else:
@@ -452,6 +474,7 @@ def callback_handler(bot, update, user_data):
         elif req_type == CallbackDataType.RETRACTING_VOTE:
             vote.retract_vote()
         elif req_type == CallbackDataType.CLOSING_POLL:
+
             pass # TODO required functionality not yet implemented
 
         vote.update_ballot()
@@ -466,8 +489,9 @@ if __name__ == "__main__":
     dispatcher.add_handler(get_static_handler("help"))
     dispatcher.add_handler(CommandHandler('feedback', feedback_handler, pass_args=True))
 
-    dispatcher.add_handler(CommandHandler('start', new_poll_handler, pass_user_data=True))
+    dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler, pass_user_data=True))
     dispatcher.add_handler(CommandHandler('done', poll_done_handler, pass_user_data=True))
+    dispatcher.add_handler(CommandHandler('mypolls', poll_list_handler, pass_user_data=True))
     dispatcher.add_handler(CommandHandler('cancel', cancel_handler, pass_user_data=True))
 
     dispatcher.add_handler(MessageHandler(Filters.text, message_handler, pass_user_data=True))
