@@ -164,13 +164,13 @@ class Poll:
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
         option_lines = '\n'.join( map(lambda o: f"▫️ {o}\n", self.options) ) # TODO indicate winners when appropriate
         poll_status = "ongoing poll" if self.ongoing else "closed poll"
-        # TODO last updated when
+        last_update_str = datetime.datetime.strftime(datetime.datetime.now(), '%c')
 
         return f"<b>{self.question}</b>\n" + \
             f"<i>{poll_type}</i>\n\n" + \
             option_lines + \
             f"\n<i>{poll_status}</i>" + \
-            f"\n\n{datetime.datetime.strftime(datetime.datetime.now(), '%c')}"
+            f"\n\nLast updated: {last_update_str}"
         # TODO checked boxes next to winner(s)
 
     def send_to_owner(self, bot):
