@@ -454,22 +454,18 @@ def callback_handler(bot, update, user_data):
     poll = Poll.poll_of_id(decoded_data[1])
     user_id = update.callback_query.from_user.id
 
-    if req_type in (CallbackDataType.REFRESH, CallbackDataType.REFRESH_ADMIN):
+    if req_type == CallbackDataType.REFRESH:
         try:
-            update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML)
+            update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML,
+                reply_markup=poll.get_public_buttons())
         except TelegramError:
             pass # ignore error if message was not modified
-
-        if req_type == CallbackDataType.REFRESH:
-            try:
-                update.callback_query.edit_reply_markup(poll.get_public_buttons())
-            except TelegramError:
-                pass # ignore error if message was not modified
-        else:
-            try:
-                update.callback_query.edit_reply_markup(poll.get_admin_buttons())
-            except TelegramError:
-                pass # ignore error if message was not modified
+    elif req_type == CallbackDataType.REFRESH_ADMIN:
+        try:
+            update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML,
+                reply_markup=poll.get_admin_buttons())
+        except TelegramError:
+            pass # ignore error if message was not modified
     else:
         vote = poll.add_vote(user_id) # should generate vote if necessary
 
