@@ -74,10 +74,13 @@ class CallbackDataType(Enum):
     SUBMITTING_VOTE = 4
     RETRACTING_VOTE = 5
     CLOSING_POLL = 6
+    REFRESH_ADMIN = 7
 
 # TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
 def encode_refresh(poll_id):
     return f"0:{poll_id}"
+def encode_refresh_admin(poll_id):
+    return f"7:{poll_id}"
 def encode_vote_start(poll_id):
     return f"1:{poll_id}"
 def encode_option(poll_id, opt_idx):
@@ -108,6 +111,8 @@ def decode_callback(s):
         return CallbackDataType.RETRACTING_VOTE, s[2:]
     elif s[0] == "6":
         return CallbackDataType.CLOSING_POLL, s[2:]
+    elif s[0] == "7":
+        return CallbackDataType.REFRESH_ADMIN, s[2:]
     else:
         raise InvalidInput(f"unknown callback: {s}")
 
@@ -449,15 +454,22 @@ def callback_handler(bot, update, user_data):
     poll = Poll.poll_of_id(decoded_data[1])
     user_id = update.callback_query.from_user.id
 
-    if req_type == CallbackDataType.REFRESH:
+    if req_type in (CallbackDataType.REFRESH, CallbackDataType.REFRESH_ADMIN):
         try:
             update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML)
         except TelegramError:
             pass # ignore error if message was not modified
-        try:
-            update.callback_query.edit_reply_markup(poll.get_ballot_html())
-        except TelegramError:
-            pass # ignore error if message was not modified
+
+        if req_type == CallbackDataType.REFRESH:
+            try:
+                update.callback_query.edit_reply_markup(poll.get_public_buttons())
+            except TelegramError:
+                pass # ignore error if message was not modified
+        else:
+            try:
+                update.callback_query.edit_reply_markup(poll.get_admin_buttons())
+            except TelegramError:
+                pass # ignore error if message was not modified
     else:
         vote = poll.add_vote(user_id) # should generate vote if necessary
 
