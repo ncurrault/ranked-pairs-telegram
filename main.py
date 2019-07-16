@@ -194,8 +194,18 @@ class Poll:
         # return [{n} for n in range(self.n_options)]
         # desired output: ranking of all candidates (possibly with equalities)
 
-    def update_winners(self):
-        pass
+    def update_winners_if_live(self):
+        if self.live_results:
+            self.call_election()
+
+    def close(self):
+        self.ongoing = False
+        self.call_election()
+
+class VoteStatus(Enum):
+    IN_PROGRESS = 1
+    COUNTED = 2
+    LATE = 3
 
 class Vote:
     def __init__(self, user, poll):
@@ -205,7 +215,8 @@ class Vote:
         self.option_rankings = [0] * self.n_options
 
         self.ballot_message = None
-        self.finalized = False
+        self.status = VoteStatus.IN_PROGRESS
+
         self.selected_option = None
 
     def retract_vote(self):
@@ -241,14 +252,19 @@ class Vote:
         ballot_draft = "\n".join(current_rankings)
         worst_rank = Vote.rank_to_str(self.n_options)
 
-        status = "ballot draft"
-        if self.finalized:
+        if self.status == VoteStatus.IN_PROGRESS:
+            status = "ballot draft"
+
+            if self.selected_option is None:
+                instructions = "If this ballot looks good, click \"Submit Vote.\" Otherwise, click the button corresponding to the option whose rank you would like to change. You can also click \"Cancel Vote\" to delete this ballot."
+            else:
+                instructions = f"Click the rank you would like to assign to {self.poll.options[self.selected_option]}. You can also click \"Cancel Vote\" to delete this ballot."
+        elif self.status == VoteStatus.COUNTED:
             status = "submitted ballot"
             instructions = "To delete this ballot, use the \"Retract Vote\" button"
-        elif self.selected_option is None:
-            instructions = "If this ballot looks good, click \"Submit Vote.\" Otherwise, click the button corresponding to the option whose rank you would like to change. You can also click \"Cancel Vote\" to delete this ballot."
-        else:
-            instructions = f"Click the rank you would like to assign to {self.poll.options[self.selected_option]}. You can also click \"Cancel Vote\" to delete this ballot."
+        elif self.status == VoteStatus.LATE:
+            status = "late ballot"
+            instructions = "The poll creator closed this poll before you submitted your ballot, so this vote cannot be counted"
 
         return f"""This is a <b>ranked-pairs ballot</b>. In this system <b>votes are ranked</b>, so you vote by giving each of the options a rank between 1 and {self.n_options}, inclusive, or ABSTAIN. (1st = good, {worst_rank} = bad, ABSTAIN = even worse than {worst_rank}.)
 
@@ -277,7 +293,7 @@ class Vote:
         self.option_rankings[option] = rank
 
     def get_button_data(self):
-        if self.finalized:
+        if self.status != VoteStatus.IN_PROGRESS:
             return telegram.InlineKeyboardMarkup([[
                 telegram.InlineKeyboardButton(text="Retract Vote", callback_data=encode_retract(self.poll.id))
             ]])
@@ -326,17 +342,18 @@ class Vote:
                 pass # ignore error if message was not modified
 
     def finalize(self):
-        if self.finalized:
-            raise InvalidInput("Vote already finalized!")
+        if self.poll.ongoing:
+            self.status = VoteStatus.COUNTED
+        else:
+            self.status = VoteStatus.LATE
 
-        self.finalized = True
-        self.option_rankings = [ \
+        # map inputs to form expected by ranked pairs implementation
+        self.mapped_option_rankings = [ \
             self.n_options - rank if rank > 0 else 0 \
             for rank in self.option_rankings \
         ]
 
-        if self.poll.live_results:
-            self.poll.update_winners()
+        self.poll.update_winners_if_live()
 
 class CreationStatus(Enum):
     WAITING = 1
@@ -482,7 +499,7 @@ def callback_handler(bot, update, user_data):
         elif req_type == CallbackDataType.RETRACTING_VOTE:
             vote.retract_vote()
         elif req_type == CallbackDataType.CLOSING_POLL:
-
+            poll.close()
             pass # TODO required functionality not yet implemented
 
         vote.update_ballot()
