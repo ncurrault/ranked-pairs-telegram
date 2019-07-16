@@ -142,7 +142,7 @@ class Poll:
     def get_admin_buttons(self):
         return telegram.InlineKeyboardMarkup([ # TODO support poll title in inline query and pass it here
             [telegram.InlineKeyboardButton(text="Close Poll", callback_data=encode_close(self.id))],
-            [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.id))],
+            [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh_admin(self.id))],
             [telegram.InlineKeyboardButton(text="Share Poll", switch_inline_query=""),
             telegram.InlineKeyboardButton(text="Vote", callback_data=encode_vote_start(self.id))]
         ])
