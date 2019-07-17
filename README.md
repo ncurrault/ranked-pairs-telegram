@@ -1,6 +1,6 @@
-# ranked-pairs-telegram
+# Ranked Pairs via Telegram
 
-A telegram bot for running ranked-pairs polls on Telegram
+A [elegram](https://en.wikipedia.org/wiki/Ranked_pairs) bot for running polls with [Ranked Pairs](https://en.wikipedia.org/wiki/Ranked_pairs).
 
 # Credits
 
