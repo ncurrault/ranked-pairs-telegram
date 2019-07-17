@@ -130,8 +130,7 @@ class Poll:
 
         self.option_ranks = [1] * len(options)
 
-        # TODO for testing only
-        self.id = "dcb25d75-4e00-41a5-b673-4faf20427fc6" # str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
+        self.id = str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
         Poll.active_polls[self.id] = self
 
     active_polls = {}
@@ -149,7 +148,7 @@ class Poll:
             [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.id))]
         ])
     def get_admin_buttons(self):
-        if not self.ongoing: # TODO allow deleting polls?
+        if not self.ongoing:
             return telegram.InlineKeyboardMarkup([[]])
 
         return telegram.InlineKeyboardMarkup([ # TODO support poll title in inline query and pass it here
@@ -180,7 +179,6 @@ class Poll:
                 return f"{self.option_ranks[option_index]}. {option}"
             else:
                 return "- " + str(option)
-            # TODO if results not live, just bullet points until results are final
 
         option_lines = '\n'.join( map(lambda t: option_to_line(*t), enumerate(self.options) ) )
 
@@ -396,12 +394,8 @@ def new_poll_handler(bot, update, user_data):
         update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to start a poll.")
 
 def poll_done_handler(bot, update, user_data):
-    poll = Poll("Question?", ["option 1", "option 2", "option 3"], False, update.message.from_user.id)
     if "active_polls" not in user_data:
         user_data["active_polls"] = set()
-
-    user_data["active_polls"].add(poll) # TODO TESTING ONLY
-    return
 
     status = user_data.get("create_status")
     if status == CreationStatus.WRITING_OPTIONS:
