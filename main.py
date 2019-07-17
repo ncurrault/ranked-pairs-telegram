@@ -75,6 +75,7 @@ class CallbackDataType(Enum):
     RETRACTING_VOTE = 5
     CLOSING_POLL = 6
     REFRESH_ADMIN = 7
+    # TODO delete poll?
 
 # TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
 def encode_refresh(poll_id):
@@ -125,6 +126,7 @@ class Poll:
         self.options = options
         self.votes = {}
 
+        # TODO for testing only
         self.id = "dcb25d75-4e00-41a5-b673-4faf20427fc6" # str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
         Poll.active_polls[self.id] = self
 
@@ -134,12 +136,18 @@ class Poll:
         return Poll.active_polls.get(id)
 
     def get_public_buttons(self):
+        if not self.ongoing:
+            return telegram.InlineKeyboardMarkup([[]])
+
         return telegram.InlineKeyboardMarkup([
             [telegram.InlineKeyboardButton(text="Vote",
                 callback_data=encode_vote_start(self.id))],
             [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh(self.id))]
         ])
     def get_admin_buttons(self):
+        if not self.ongoing: # TODO allow deleting polls?
+            return telegram.InlineKeyboardMarkup([[]])
+
         return telegram.InlineKeyboardMarkup([ # TODO support poll title in inline query and pass it here
             [telegram.InlineKeyboardButton(text="Close Poll", callback_data=encode_close(self.id))],
             [telegram.InlineKeyboardButton(text="Refresh Results", callback_data=encode_refresh_admin(self.id))],
@@ -166,10 +174,14 @@ class Poll:
         poll_status = "ongoing poll" if self.ongoing else "closed poll"
         last_update_str = datetime.datetime.strftime(datetime.datetime.now(), '%c')
 
+        n_votes = sum(vote.status == VoteStatus.COUNTED for vote in self.votes.values())
+        n_drafts = sum(vote.status == VoteStatus.IN_PROGRESS for vote in self.votes.values())
+
         return f"<b>{self.question}</b>\n" + \
             f"<i>{poll_type}</i>\n\n" + \
             option_lines + \
             f"\n<i>{poll_status}</i>" + \
+            f"\n{n_votes} votes submitted, {n_drafts} ballot drafts" + \
             f"\n\nLast updated: {last_update_str}"
         # TODO checked boxes next to winner(s)
 
@@ -266,14 +278,12 @@ class Vote:
             status = "late ballot"
             instructions = "The poll creator closed this poll before you submitted your ballot, so this vote cannot be counted"
 
-        return f"""This is a <b>ranked-pairs ballot</b>. In this system <b>votes are ranked</b>, so you vote by giving each of the options a rank between 1 and {self.n_options}, inclusive, or ABSTAIN. (1st = good, {worst_rank} = bad, ABSTAIN = even worse than {worst_rank}.)
-
-<b>{self.poll.question}</b>
-{ballot_draft}
-
-<i>Ballot status: {status}</i>
-{instructions}
-"""
+        return f"This is a <b>ranked-pairs ballot</b>. " +
+            "In this system <b>votes are ranked</b>, " +
+            f"so you vote by giving each of the options a rank between 1 and {self.n_options}, inclusive, or ABSTAIN. " +
+            f"(1st = good, {worst_rank} = bad, ABSTAIN = even worse than {worst_rank}.) " +
+            f"\n\n<b>{self.poll.question}</b>\n{ballot_draft}" +
+            f"\n\n<i>Ballot status: {status}</i>\n{instructions}"
 
     def tap_option(self, option):
         if option < 0 or option >= self.n_options:
@@ -332,12 +342,9 @@ class Vote:
     def update_ballot(self):
         if self.ballot_message is not None:
             try:
-                self.ballot_message.edit_text(text=self.get_ballot_html(), parse_mode=telegram.ParseMode.HTML)
-            except TelegramError:
-                pass # ignore error if message was not modified
-
-            try:
-                self.ballot_message.edit_reply_markup(reply_markup=self.get_button_data())
+                self.ballot_message.edit_text( \
+                    text=self.get_ballot_html(), parse_mode=telegram.ParseMode.HTML,
+                    reply_markup=self.get_button_data())
             except TelegramError:
                 pass # ignore error if message was not modified
 
@@ -379,8 +386,7 @@ def poll_done_handler(bot, update, user_data):
     if "active_polls" not in user_data:
         user_data["active_polls"] = set()
 
-    user_data["active_polls"].add(poll)
-    # TODO TESTING ONLY
+    user_data["active_polls"].add(poll) # TODO TESTING ONLY
     return
 
     status = user_data.get("create_status")
