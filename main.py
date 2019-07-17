@@ -176,7 +176,10 @@ class Poll:
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
 
         def option_to_line(option_index, option):
-            return f"{self.option_ranks[option_index]}. {option}"
+            if self.live_results or not self.ongoing:
+                return f"{self.option_ranks[option_index]}. {option}"
+            else:
+                return "- " + str(option)
             # TODO if results not live, just bullet points until results are final
 
         option_lines = '\n'.join( map(lambda t: option_to_line(*t), enumerate(self.options) ) )
@@ -393,7 +396,7 @@ def new_poll_handler(bot, update, user_data):
         update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to start a poll.")
 
 def poll_done_handler(bot, update, user_data):
-    poll = Poll("Question?", ["option 1", "option 2", "option 3"], True, update.message.from_user.id)
+    poll = Poll("Question?", ["option 1", "option 2", "option 3"], False, update.message.from_user.id)
     if "active_polls" not in user_data:
         user_data["active_polls"] = set()
 
