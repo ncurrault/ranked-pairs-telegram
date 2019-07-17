@@ -278,11 +278,11 @@ class Vote:
             status = "late ballot"
             instructions = "The poll creator closed this poll before you submitted your ballot, so this vote cannot be counted"
 
-        return f"This is a <b>ranked-pairs ballot</b>. " +
-            "In this system <b>votes are ranked</b>, " +
-            f"so you vote by giving each of the options a rank between 1 and {self.n_options}, inclusive, or ABSTAIN. " +
-            f"(1st = good, {worst_rank} = bad, ABSTAIN = even worse than {worst_rank}.) " +
-            f"\n\n<b>{self.poll.question}</b>\n{ballot_draft}" +
+        return f"This is a <b>ranked-pairs ballot</b>. " + \
+            "In this system <b>votes are ranked</b>, " + \
+            f"so you vote by giving each of the options a rank between 1 and {self.n_options}, inclusive, or ABSTAIN. " + \
+            f"(1st = good, {worst_rank} = bad, ABSTAIN = even worse than {worst_rank}.) " + \
+            f"\n\n<b>{self.poll.question}</b>\n{ballot_draft}" + \
             f"\n\n<i>Ballot status: {status}</i>\n{instructions}"
 
     def tap_option(self, option):
@@ -477,6 +477,11 @@ def callback_handler(bot, update, user_data):
     poll = Poll.poll_of_id(decoded_data[1])
     user_id = update.callback_query.from_user.id
 
+    if req_type == CallbackDataType.CLOSING_POLL:
+        poll.close()
+        req_type = CallbackDataType.REFRESH_ADMIN
+        # FIXME closing a poll should also trigger a refresh but this seems messy
+
     if req_type == CallbackDataType.REFRESH:
         try:
             update.callback_query.edit_message_text(poll.get_html_repr(), parse_mode=telegram.ParseMode.HTML,
@@ -504,9 +509,6 @@ def callback_handler(bot, update, user_data):
             vote.finalize()
         elif req_type == CallbackDataType.RETRACTING_VOTE:
             vote.retract_vote()
-        elif req_type == CallbackDataType.CLOSING_POLL:
-            poll.close()
-            pass # TODO required functionality not yet implemented
 
         vote.update_ballot()
 
