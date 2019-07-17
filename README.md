@@ -2,6 +2,6 @@
 
 A telegram bot for running ranked-pairs polls on Telegram
 
-# Licenses
+# Credits
 
 Formatting inspiration from [@VoteBot](https://t.me/VoteBot).
