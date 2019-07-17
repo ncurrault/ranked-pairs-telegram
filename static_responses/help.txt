@@ -1,0 +1,7 @@
+Available commands:
+
+/newpoll - make a new poll
+/done - finish making a poll (after giving required details)
+/mypolls - list all your polls
+/cancel - cancel the current action
+/feedback - give feedback
