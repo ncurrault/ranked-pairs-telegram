@@ -2,6 +2,8 @@ import telegram
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, \
     InlineQueryHandler, CallbackQueryHandler
 from telegram.error import TelegramError
+import ranked_pairs
+
 import logging
 
 import datetime
@@ -126,6 +128,8 @@ class Poll:
         self.options = options
         self.votes = {}
 
+        self.winners = set()
+
         # TODO for testing only
         self.id = "dcb25d75-4e00-41a5-b673-4faf20427fc6" # str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
         Poll.active_polls[self.id] = self
@@ -170,7 +174,15 @@ class Poll:
         Get representation of a poll: question, options, result type, whether poll is ongoing
         """
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
-        option_lines = '\n'.join( map(lambda o: f"▫️ {o}\n", self.options) ) # TODO indicate winners when appropriate
+
+        def option_to_line(option_index, option):
+            box = "☒" if option_index in self.winners else "☐"
+            return f"{box} {option}"
+            # TODO if results not live, just bullet points until results are final
+
+        option_lines = '\n'.join( map(lambda t: option_to_line(*t), enumerate(self.options) ) )
+
+
         poll_status = "ongoing poll" if self.ongoing else "closed poll"
         last_update_str = datetime.datetime.strftime(datetime.datetime.now(), '%c')
 
@@ -183,7 +195,6 @@ class Poll:
             f"\n<i>{poll_status}</i>" + \
             f"\n{n_votes} votes submitted, {n_drafts} ballot drafts" + \
             f"\n\nLast updated: {last_update_str}"
-        # TODO checked boxes next to winner(s)
 
     def send_to_owner(self, bot):
         bot.send_message(chat_id=self.owner,
@@ -200,11 +211,15 @@ class Poll:
             del self.votes[user]
 
     def call_election(self):
-        # TODO actually implement ranked pairs
-        return [0]
-        # desired output for v1: just the winners
+        ballots = [
+            vote.mapped_option_rankings for vote in self.votes
+            if vote.status == VoteStatus.COUNTED
+        ]
+
+        self.winners = ranked_pairs.get_winners(ballots)
+
+        # TODO improve to give ranking of all candidates (possibly with equalities)
         # return [{n} for n in range(self.n_options)]
-        # desired output: ranking of all candidates (possibly with equalities)
 
     def update_winners_if_live(self):
         if self.live_results:
