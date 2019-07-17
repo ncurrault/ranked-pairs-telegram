@@ -212,7 +212,7 @@ class Poll:
 
     def call_election(self):
         ballots = [
-            vote.mapped_option_rankings for vote in self.votes
+            vote.mapped_option_rankings for vote in self.votes.values()
             if vote.status == VoteStatus.COUNTED
         ]
 
