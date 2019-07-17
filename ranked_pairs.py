@@ -1,3 +1,5 @@
+import copy
+
 class Pair:
     def __init__(self, candidateA, candidateB):
         self.min_candidate = min(candidateA, candidateB)
@@ -93,7 +95,6 @@ def get_winners(ballots):
 
     return get_sources(graph)
 
-# TODO basically rank the set of candidates
 def get_ranked_partitions(ballots):
     """
     'ballots' should be a 2D array: rows are voters, columns are candidates,
@@ -103,8 +104,27 @@ def get_ranked_partitions(ballots):
     works by repeatedly calling get_winners, removing victors, and calling again
     until all candidates have won and been assigned a rank
     """
-    return [ {b} for b in range(len(ballots[0])) ]
-    # TODO implement
+    n_options = len(ballots[0])
+    ballots_copy = copy.deepcopy(ballots)
+
+    already_won = set()
+    result = []
+
+    while True:
+        winners = get_winners(ballots_copy)
+        if len(winners.intersection(already_won)) > 0:
+            break
+
+        already_won.update(winners)
+        result.append(winners)
+
+        for w in winners:
+            for ballot in ballots_copy:
+                ballot[w] = -1
+        # ensure this person is worse than abstain so they should never win until all other candidates have been picked
+
+    assert len(already_won) == n_options
+    return result
 
 def get_candidate_rankings(ballots):
     """
@@ -114,9 +134,11 @@ def get_candidate_rankings(ballots):
     partitions = get_ranked_partitions(ballots)
     rankings = [ None for _ in ballots[0] ]
 
-    for n, part in enumerate(partitions):
+    rank = 1
+    for part in partitions:
         for option_idx in part:
-            rankings[option_idx] = n + 1
+            rankings[option_idx] = rank
+        rank += len(part)
 
     assert None not in rankings
     return rankings

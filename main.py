@@ -128,7 +128,7 @@ class Poll:
         self.options = options
         self.votes = {}
 
-        self.winners = set()
+        self.option_ranks = [1] * len(options)
 
         # TODO for testing only
         self.id = "dcb25d75-4e00-41a5-b673-4faf20427fc6" # str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
@@ -176,8 +176,7 @@ class Poll:
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
 
         def option_to_line(option_index, option):
-            box = "☒" if option_index in self.winners else "☐"
-            return f"{box} {option}"
+            return f"{self.option_ranks[option_index]}. {option}"
             # TODO if results not live, just bullet points until results are final
 
         option_lines = '\n'.join( map(lambda t: option_to_line(*t), enumerate(self.options) ) )
@@ -216,10 +215,7 @@ class Poll:
             if vote.status == VoteStatus.COUNTED
         ]
 
-        self.winners = ranked_pairs.get_winners(ballots)
-
-        # TODO improve to give ranking of all candidates (possibly with equalities)
-        # return [{n} for n in range(self.n_options)]
+        self.option_ranks = ranked_pairs.get_candidate_rankings(ballots)
 
     def update_winners_if_live(self):
         if self.live_results:
