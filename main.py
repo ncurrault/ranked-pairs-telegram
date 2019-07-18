@@ -180,7 +180,9 @@ class Poll:
             else:
                 return "- " + str(option)
 
-        option_lines = '\n'.join( map(lambda t: option_to_line(*t), enumerate(self.options) ) )
+        option_lines = list(map(lambda t: option_to_line(*t), enumerate(self.options) ))
+        option_lines.sort()
+        option_lines_str = '\n'.join( option_lines )
 
 
         poll_status = "ongoing poll" if self.ongoing else "closed poll"
@@ -191,10 +193,11 @@ class Poll:
 
         return f"<b>{self.question}</b>\n" + \
             f"<i>{poll_type}</i>\n\n" + \
-            option_lines + \
+            option_lines_str + \
             f"\n<i>{poll_status}</i>" + \
             f"\n{n_votes} votes submitted, {n_drafts} ballot drafts" + \
-            f"\n\nLast updated: {last_update_str}"
+            f"\n\nLast updated: {last_update_str}" + \
+            f'\nP.S. you have to have <a href="{DM_URL}">DM\'d me</a> before voting'
 
     def send_to_owner(self, bot):
         bot.send_message(chat_id=self.owner,
@@ -215,8 +218,10 @@ class Poll:
             vote.mapped_option_rankings for vote in self.votes.values()
             if vote.status == VoteStatus.COUNTED
         ]
-
-        self.option_ranks = ranked_pairs.get_candidate_rankings(ballots)
+        if len(ballots) > 0:
+            self.option_ranks = ranked_pairs.get_candidate_rankings(ballots)
+        else:
+            self.option_ranks = [1] * len(self.options)
 
     def update_winners_if_live(self):
         if self.live_results:
@@ -525,6 +530,8 @@ def callback_handler(bot, update, user_data):
 
 
 if __name__ == "__main__":
+    # TODO persistence (as soon as it's out of beta)
+
     updater = Updater(token=API_KEY)
     dispatcher = updater.dispatcher
 
