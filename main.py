@@ -18,7 +18,7 @@ with open("data/token.txt", "r") as f:
 
 with open("data/username.txt", "r") as f:
     USERNAME = f.read().rstrip()
-    DM_URL = f"http://t.me/{USERNAME}"
+    DM_URL = "http://t.me/" + USERNAME
 
 def get_static_handler(command):
     """
@@ -81,21 +81,21 @@ class CallbackDataType(Enum):
 
 # TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
 def encode_refresh(poll_id):
-    return f"0:{poll_id}"
+    return "0:" + poll_id
 def encode_refresh_admin(poll_id):
-    return f"7:{poll_id}"
+    return "7:" + poll_id
 def encode_vote_start(poll_id):
-    return f"1:{poll_id}"
+    return "1:" + poll_id
 def encode_option(poll_id, opt_idx):
-    return f"2:{poll_id}:{opt_idx}"
+    return "2:" + poll_id + ":" + str(opt_idx)
 def encode_rank(poll_id, rank):
-    return f"3:{poll_id}:{rank}"
+    return "3:" + poll_id + ":" + str(rank)
 def encode_submit(poll_id):
-    return f"4:{poll_id}"
+    return "4:" + poll_id
 def encode_retract(poll_id):
-    return f"5:{poll_id}"
+    return "5:" + poll_id
 def encode_close(poll_id):
-    return f"6:{poll_id}"
+    return "6:" + poll_id
 
 def decode_callback(s):
     if s[0] == "0":
@@ -117,7 +117,7 @@ def decode_callback(s):
     elif s[0] == "7":
         return CallbackDataType.REFRESH_ADMIN, s[2:]
     else:
-        raise InvalidInput(f"unknown callback: {s}")
+        raise InvalidInput("unknown callback: " + str(s))
 
 class Poll:
     def __init__(self, question, options, live_results, owner):
@@ -176,7 +176,7 @@ class Poll:
 
         def option_to_line(option_index, option):
             if self.live_results or not self.ongoing:
-                return f"{self.option_ranks[option_index]}. {option}"
+                return str(self.option_ranks[option_index]) + ". " + option
             else:
                 return "- " + str(option)
 
@@ -191,13 +191,13 @@ class Poll:
         n_votes = sum(vote.status == VoteStatus.COUNTED for vote in self.votes.values())
         n_drafts = sum(vote.status == VoteStatus.IN_PROGRESS for vote in self.votes.values())
 
-        return f"<b>{self.question}</b>\n" + \
-            f"<i>{poll_type}</i>\n\n" + \
+        return "<b>" + self.question + "</b>\n" + \
+            "<i>" + poll_type + "</i>\n\n" + \
             option_lines_str + \
-            f"\n<i>{poll_status}</i>" + \
-            f"\n{n_votes} votes submitted, {n_drafts} ballot drafts" + \
-            f"\n\nLast updated: {last_update_str}" + \
-            f'\nP.S. you have to have <a href="{DM_URL}">DM\'d me</a> before voting'
+            "\n<i>" + poll_status + "</i>\n" + \
+            str(n_votes) + " votes submitted, " + str(n_drafts) + " ballot drafts" + \
+            "\n\nLast updated: " + last_update_str + \
+            '\nP.S. you have to have <a href="' + DM_URL + '">DM\'d me</a> before voting'
 
     def send_to_owner(self, bot):
         bot.send_message(chat_id=self.owner,
@@ -260,13 +260,13 @@ class Vote:
         else:
             ones = rank % 10
             if ones == 1:
-                return f"{rank}st"
+                return str(rank) + "st"
             elif ones == 2:
-                return f"{rank}nd"
+                return str(rank) + "nd"
             elif ones == 3:
-                return f"{rank}rd"
+                return str(rank) + "rd"
             else:
-                return f"{rank}th"
+                return str(rank) + "th"
 
     def get_ballot_html(self):
         current_rankings = []
@@ -287,7 +287,7 @@ class Vote:
             if self.selected_option is None:
                 instructions = "If this ballot looks good, click \"Submit Vote.\" Otherwise, click the button corresponding to the option whose rank you would like to change. You can also click \"Cancel Vote\" to delete this ballot."
             else:
-                instructions = f"Click the rank you would like to assign to {self.poll.options[self.selected_option]}. You can also click \"Cancel Vote\" to delete this ballot."
+                instructions = "Click the rank you would like to assign to " + self.poll.options[self.selected_option] + ". You can also click \"Cancel Vote\" to delete this ballot."
         elif self.status == VoteStatus.COUNTED:
             status = "submitted ballot"
             instructions = "To delete this ballot, use the \"Retract Vote\" button"
@@ -295,12 +295,12 @@ class Vote:
             status = "late ballot"
             instructions = "The poll creator closed this poll before you submitted your ballot, so this vote cannot be counted"
 
-        return f"This is a <b>ranked-pairs ballot</b>. " + \
+        return "This is a <b>ranked-pairs ballot</b>. " + \
             "In this system <b>votes are ranked</b>, " + \
-            f"so you vote by giving each of the options a rank between 1 and {self.n_options}, inclusive, or ABSTAIN. " + \
-            f"(1st = good, {worst_rank} = bad, ABSTAIN = even worse than {worst_rank}.) " + \
-            f"\n\n<b>{self.poll.question}</b>\n{ballot_draft}" + \
-            f"\n\n<i>Ballot status: {status}</i>\n{instructions}"
+            "so you vote by giving each of the options a rank between 1 and " + str(self.n_options) + ", inclusive, or ABSTAIN. " + \
+            "(1st = good, " + str(worst_rank) + "= bad, ABSTAIN = even worse than " + str(worst_rank) + ".) " + \
+            "\n\n<b>{self.poll.question}</b>\n{ballot_draft}" + \
+            "\n\n<i>Ballot status: " + status + "</i>\n" + instructions
 
     def tap_option(self, option):
         if option < 0 or option >= self.n_options:
@@ -327,20 +327,20 @@ class Vote:
         elif self.selected_option is None:
             rankings = list(map(Vote.rank_to_str, self.option_rankings))
             button_lst = [
-                telegram.InlineKeyboardButton(text=f"Rank {self.poll.options[i]}", \
+                telegram.InlineKeyboardButton(text="Rank " + self.poll.options[i], \
                 callback_data=encode_option(self.poll.id, i)) \
                 for i in range(self.n_options) ]
             button_lst.append( # button to keep current ranking, effectively going back
-                telegram.InlineKeyboardButton(text=f"Submit Vote",
+                telegram.InlineKeyboardButton(text="Submit Vote",
                 callback_data=encode_submit(self.poll.id)))
         else:
             option_str = self.poll.options[self.selected_option]
             button_lst = [ \
-                telegram.InlineKeyboardButton(text=f"Rank {option_str} as {Vote.rank_to_str(i)}", \
+                telegram.InlineKeyboardButton(text="Rank " + option_str + " as " + Vote.rank_to_str(i), \
                 callback_data=encode_rank(self.poll.id, i)) \
                 for i in range(self.n_options + 1) ]
             button_lst.append( # button to keep current ranking, effectively going back
-                telegram.InlineKeyboardButton(text=f"Back to option list",
+                telegram.InlineKeyboardButton(text="Back to option list",
                 callback_data=encode_rank(self.poll.id, self.option_rankings[self.selected_option])))
 
         return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ] + [[
@@ -396,7 +396,7 @@ def new_poll_handler(bot, update, user_data):
             text="Would you like the poll results to appear live or only when it is closed?",
             reply_markup=keyboard_options)
     else:
-        update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to start a poll.")
+        update.message.reply_markdown(text="Don't spam this chat, [slide into my DMs](" + DM_URL + ") to start a poll.")
 
 def poll_done_handler(bot, update, user_data):
     if "active_polls" not in user_data:
@@ -431,14 +431,14 @@ def poll_done_handler(bot, update, user_data):
         reason = "start a poll with /start"
 
     bot.send_message(chat_id=update.message.chat.id,
-        text=f"Cannot create poll. Please {reason}!")
+        text="Cannot create poll. Please " + reason + "!")
 
 def cancel_handler(bot, update, user_data):
     if user_data.get("create_status") != CreationStatus.WAITING:
         user_data["create_status"] = CreationStatus.WAITING
 
         bot.send_message(chat_id=update.message.chat.id,
-            text="Cancelled! /start to try again",
+            text="Cancelled! /newpoll to try again",
             reply_markup=telegram.ReplyKeyboardRemove())
 
 def poll_list_handler(bot, update, user_data):
@@ -447,11 +447,11 @@ def poll_list_handler(bot, update, user_data):
         if len(polls) == 0:
             update.message.reply_text(text="You don't seem to have any active polls! You can make one with /newpoll")
         else:
-            update.message.reply_text(text=f"You have {len(polls)} polls! Here they are:")
+            update.message.reply_text(text="You have " + str(len(polls)) + " polls! Here they are:")
             for poll in polls:
                 poll.send_to_owner(bot)
     else:
-        update.message.reply_markdown(text=f"Don't spam this chat, [slide into my DMs]({DM_URL}) to use this command.")
+        update.message.reply_markdown(text="Don't spam this chat, [slide into my DMs](" + DM_URL + ") to use this command.")
 
 def message_handler(bot, update, user_data):
     if "create_status" in user_data:
