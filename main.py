@@ -401,7 +401,8 @@ def poll_done_handler(bot, update, user_data):
     if status == CreationStatus.WRITING_OPTIONS:
         if len(user_data["pending_options"]) >= 2:
             poll = Poll(user_data["pending_question"],
-                user_data["pending_options"], user_data["pending_results_live"])
+                user_data["pending_options"], user_data["pending_results_live"],
+                update.message.from_user.id)
 
             bot.send_message(chat_id=update.message.chat.id,
                 text="Successfully created poll!")
