@@ -552,7 +552,7 @@ if __name__ == "__main__":
 
     # allows viewing of exceptions
     logging.basicConfig(
-        filename="data/bot.log"
+        filename="data/bot.log",
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO) # not sure exactly how this works
 
