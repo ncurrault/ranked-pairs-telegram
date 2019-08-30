@@ -178,7 +178,7 @@ class Poll:
             sorted_option_index = sorted(range(len(self.options)),
                 key=lambda idx: self.option_ranks[idx])
             option_lines_str = "\n".join(map(lambda idx:
-                "• {} ({} place)".format( self.options[idx],
+                "• {} ({})".format( self.options[idx],
                 Vote.rank_to_str(self.option_ranks[idx]) ),
                 sorted_option_index))
         else:
