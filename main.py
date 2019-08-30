@@ -77,6 +77,7 @@ class CallbackDataType(Enum):
     RETRACTING_VOTE = 5
     CLOSING_POLL = 6
     REFRESH_ADMIN = 7
+    CHANGE_OF_RANK = 8
     # TODO delete poll?
 
 # TODO telegram probably has a better way of passing data in a way that's under 64 bytes...
@@ -96,6 +97,8 @@ def encode_retract(poll_id):
     return "5:{}".format(poll_id)
 def encode_close(poll_id):
     return "6:{}".format(poll_id)
+def encode_rank_change(poll_id):
+    return "8:{}".format(poll_id)
 
 def decode_callback(s):
     if s[0] == "0":
@@ -116,6 +119,8 @@ def decode_callback(s):
         return CallbackDataType.CLOSING_POLL, s[2:]
     elif s[0] == "7":
         return CallbackDataType.REFRESH_ADMIN, s[2:]
+    elif s[0] == "8":
+        return CallbackDataType.CHANGE_OF_RANK, s[2:]
     else:
         raise InvalidInput("unknown callback: {}".format(s))
 
@@ -247,7 +252,7 @@ class Vote:
         self.ballot_message = None
         self.status = VoteStatus.IN_PROGRESS
 
-        self.selected_option = None
+        self.current_rank = 1
 
     def retract_vote(self):
         if self.poll.ongoing:
@@ -274,25 +279,20 @@ class Vote:
                 return "{}th".format(rank)
 
     def get_ballot_html(self):
-        current_rankings = []
-        for i in range(self.n_options):
-            s = self.poll.options[i] + " - "
-            if i == self.selected_option:
-                s += "SELECT A RANK"
-            else:
-                s += Vote.rank_to_str(self.option_rankings[i])
-            current_rankings.append(s)
-
-        ballot_draft = "\n".join(current_rankings)
+        ballot_draft = "\n".join( \
+            self.poll.options[i] + " - " + Vote.rank_to_str(self.option_rankings[i]) \
+            for i in range(self.n_options))
         worst_rank = Vote.rank_to_str(self.n_options)
 
         if self.status == VoteStatus.IN_PROGRESS:
             status = "ballot draft"
-
-            if self.selected_option is None:
-                instructions = "If this ballot looks good, click \"Submit Vote.\" Otherwise, click the button corresponding to the option whose rank you would like to change. You can also click \"Cancel Vote\" to delete this ballot."
+            if self.current_rank is None:
+                instructions = "Select a rank you would like to assign to an option."
             else:
-                instructions = "Click the rank you would like to assign to {}. You can also click \"Cancel Vote\" to delete this ballot.".format(self.poll.options[self.selected_option])
+                instructions = ("Click the option you would like to rank <b>{}</b>.\n\n" \
+                    + "You can also use <i>Change Rank</i> to jump to another rank (to correct mistakes, encode ties, or skip ranks)." \
+                    ).format(Vote.rank_to_str(self.current_rank))
+            instructions += " Click <i>Cancel Vote</i> to delete this ballot or <i>Submit Vote</i> to submit it as-is at any time."
         elif self.status == VoteStatus.COUNTED:
             status = "submitted ballot"
             instructions = "To delete this ballot, use the \"Retract Vote\" button"
@@ -315,46 +315,52 @@ class Vote:
         if option < 0 or option >= self.n_options:
             raise InvalidInput("invalid option!")
         else:
-            self.selected_option = option
+            self.__set_ranking(option, self.current_rank)
+
+            if self.current_rank > 0:
+                self.current_rank = (self.current_rank + 1) % (self.n_options + 1)
 
     def tap_rank(self, rank):
         if rank < 0 or rank > self.n_options:
             raise InvalidInput("invalid rank!")
-        if self.selected_option is None:
-            raise InvalidInput("must select option before rank!")
-        self.__set_ranking(self.selected_option, rank)
-        self.selected_option = None
+
+        self.current_rank = rank
+
+    def clear_current_ranking(self):
+        self.current_rank = None
 
     def __set_ranking(self, option, rank):
         self.option_rankings[option] = rank
 
     def get_button_data(self):
-        if self.status != VoteStatus.IN_PROGRESS:
+        if self.status == VoteStatus.COUNTED:
             return telegram.InlineKeyboardMarkup([[
                 telegram.InlineKeyboardButton(text="Retract Vote", callback_data=encode_retract(self.poll.id))
             ]])
-        elif self.selected_option is None:
-            rankings = list(map(Vote.rank_to_str, self.option_rankings))
-            button_lst = [
-                telegram.InlineKeyboardButton(text="Rank {}".format(self.poll.options[i]), \
-                callback_data=encode_option(self.poll.id, i)) \
-                for i in range(self.n_options) ]
-            button_lst.append( # button to keep current ranking, effectively going back
-                telegram.InlineKeyboardButton(text="Submit Vote",
-                callback_data=encode_submit(self.poll.id)))
-        else:
-            option_str = self.poll.options[self.selected_option]
-            button_lst = [ \
-                telegram.InlineKeyboardButton(text=Vote.rank_to_str(i), \
-                callback_data=encode_rank(self.poll.id, i)) \
-                for i in range(self.n_options + 1) ]
-            button_lst.append( # button to keep current ranking, effectively going back
-                telegram.InlineKeyboardButton(text="Back to option list",
-                callback_data=encode_rank(self.poll.id, self.option_rankings[self.selected_option])))
+        elif self.status == VoteStatus.IN_PROGRESS:
+            if self.current_rank is None:
+                button_lst = [ \
+                    telegram.InlineKeyboardButton(text=Vote.rank_to_str(i), \
+                    callback_data=encode_rank(self.poll.id, i)) \
+                    for i in range(self.n_options + 1) ]
+            else:
+                rankings = list(map(Vote.rank_to_str, self.option_rankings))
+                button_lst = [
+                    telegram.InlineKeyboardButton(text=self.poll.options[i], \
+                    callback_data=encode_option(self.poll.id, i)) \
+                    for i in range(self.n_options) ]
 
-        return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ] + [[
-            telegram.InlineKeyboardButton(text="Cancel Vote", callback_data=encode_retract(self.poll.id))
-        ]]) # always allow user to cancel vote
+                button_lst.append(
+                    telegram.InlineKeyboardButton(text="Change Rank",
+                    callback_data=encode_rank_change(self.poll.id)))
+
+            return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ] + [[
+                telegram.InlineKeyboardButton(text="Cancel Vote", callback_data=encode_retract(self.poll.id))
+            ]] + [[
+                telegram.InlineKeyboardButton(text="Submit Vote", callback_data=encode_submit(self.poll.id))
+            ]]) # always allow user to submit, cancel vote
+        else:
+            return telegram.InlineKeyboardMarkup([[]])
 
     def send_ballot(self, bot):
         if self.ballot_message is not None:
@@ -537,6 +543,8 @@ def callback_handler(bot, update, user_data):
         elif req_type == CallbackDataType.SELECTING_OPTION:
             opt = decoded_data[2]
             vote.tap_option(opt)
+        elif req_type == CallbackDataType.CHANGE_OF_RANK:
+            vote.clear_current_ranking()
         elif req_type == CallbackDataType.SELECTING_RANK:
             rank = decoded_data[2]
             vote.tap_rank(rank)
