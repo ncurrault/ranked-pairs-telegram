@@ -355,8 +355,7 @@ class Vote:
                     callback_data=encode_rank_change(self.poll.id)))
 
             return telegram.InlineKeyboardMarkup([ [btn] for btn in button_lst ] + [[
-                telegram.InlineKeyboardButton(text="Cancel Vote", callback_data=encode_retract(self.poll.id))
-            ]] + [[
+                telegram.InlineKeyboardButton(text="Cancel Vote", callback_data=encode_retract(self.poll.id)),
                 telegram.InlineKeyboardButton(text="Submit Vote", callback_data=encode_submit(self.poll.id))
             ]]) # always allow user to submit, cancel vote
         else:
