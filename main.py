@@ -174,16 +174,15 @@ class Poll:
         """
         poll_type = "live ranked-pairs poll" if self.live_results else "ranked-pairs poll with results at end"
 
-        def option_to_line(option_index, option):
-            if self.live_results or not self.ongoing:
-                return "{}. {}".format(self.option_ranks[option_index], option)
-            else:
-                return "- " + str(option)
-
-        option_lines = list(map(lambda t: option_to_line(*t), enumerate(self.options) ))
-        option_lines.sort()
-        option_lines_str = '\n'.join( option_lines )
-
+        if self.live_results or not self.ongoing:
+            sorted_option_index = sorted(range(len(self.options)),
+                key=lambda idx: self.option_ranks[idx])
+            option_lines_str = "\n".join(map(lambda idx:
+                "- {} ({})".format( self.options[idx],
+                Vote.rank_to_str(self.option_ranks[idx]) ),
+                sorted_option_index))
+        else:
+            option_lines_str = '\n'.join( "- " + opt for opt in self.options)
 
         poll_status = "ongoing poll" if self.ongoing else "closed poll"
         last_update_str = datetime.datetime.strftime(datetime.datetime.now(), '%c')
