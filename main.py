@@ -447,7 +447,7 @@ def poll_list_handler(bot, update, user_data):
     if update.message.chat.type == "private":
         polls = user_data.get("active_polls", [])
         if len(polls) == 0:
-            update.message.reply_text(text="You don't seem to have any active polls! You can make one with /newpoll")
+            update.message.reply_text(text="You don't seem to have any polls! You can make one with /newpoll")
         else:
             update.message.reply_text(text="You have {} polls! Here they are:".format(len(polls)))
             for poll in polls:
@@ -484,9 +484,9 @@ def message_handler(bot, update, user_data):
 
 def inline_query_handler(bot, update, user_data):
     def simplify_str(s):
-        return "".join(c.lower() for c in s if c.isalpha())
+        return "".join(c.lower() for c in s if c.isalnum())
     def contains(needle, haystack):
-        simplify_str(haystack).find(simplify_str(needle)) != -1
+        return simplify_str(haystack).find(simplify_str(needle)) != -1
 
     query = update.inline_query.query
     out_polls = user_data.get("active_polls", [])
@@ -496,7 +496,7 @@ def inline_query_handler(bot, update, user_data):
         if ( len(query) == 0 or contains(query, poll.question) ) and \
         poll.ongoing \
     ]
-    
+
     bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
 
 def callback_handler(bot, update, user_data):
