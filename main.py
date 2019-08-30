@@ -178,11 +178,11 @@ class Poll:
             sorted_option_index = sorted(range(len(self.options)),
                 key=lambda idx: self.option_ranks[idx])
             option_lines_str = "\n".join(map(lambda idx:
-                "- {} ({})".format( self.options[idx],
+                "• {} ({} place)".format( self.options[idx],
                 Vote.rank_to_str(self.option_ranks[idx]) ),
                 sorted_option_index))
         else:
-            option_lines_str = '\n'.join( "- " + opt for opt in self.options)
+            option_lines_str = '\n'.join( "• " + opt for opt in self.options)
 
         poll_status = "ongoing poll" if self.ongoing else "closed poll"
         last_update_str = datetime.datetime.strftime(datetime.datetime.now(), '%c')
@@ -193,7 +193,7 @@ class Poll:
         return ("<b>{}</b>\n" + \
             "<i>{}</i>\n\n" + \
             option_lines_str + \
-            "\n<i>{}</i>" + \
+            "\n\n<i>{}</i>" + \
             "\n{} votes submitted, {} ballot drafts" + \
             "\n\nLast updated: {}" + \
             '\nP.S. you have to have <a href="{}">DM\'d me</a> before voting') \
