@@ -235,6 +235,7 @@ class VoteStatus(Enum):
     IN_PROGRESS = 1
     COUNTED = 2
     LATE = 3
+    RETRACTED_LATE = 4
 
 class Vote:
     def __init__(self, user, poll):
@@ -249,9 +250,12 @@ class Vote:
         self.selected_option = None
 
     def retract_vote(self):
-        self.poll.remove_vote(self.user)
-        if self.ballot_message:
-            self.ballot_message.delete()
+        if self.poll.ongoing:
+            self.poll.remove_vote(self.user)
+            if self.ballot_message:
+                self.ballot_message.delete()
+        else:
+            self.status = VoteStatus.RETRACTED_LATE
 
     @classmethod
     def rank_to_str(cls, rank):
@@ -295,6 +299,9 @@ class Vote:
         elif self.status == VoteStatus.LATE:
             status = "late ballot"
             instructions = "The poll creator closed this poll before you submitted your ballot, so this vote cannot be counted"
+        elif self.status == VoteStatus.RETRACTED_LATE:
+            status = "late-retracted ballot"
+            instructions = "The poll creator closed this poll before you attempted to retract your ballot, so this vote was already counted"
 
         return ("This is a <b>ranked-pairs ballot</b>. " + \
             "In this system <b>votes are ranked</b>, " + \
