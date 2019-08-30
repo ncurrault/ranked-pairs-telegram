@@ -338,7 +338,7 @@ class Vote:
         else:
             option_str = self.poll.options[self.selected_option]
             button_lst = [ \
-                telegram.InlineKeyboardButton(text="Rank {} as {}".format(option_str, Vote.rank_to_str(i)), \
+                telegram.InlineKeyboardButton(text=Vote.rank_to_str(i), \
                 callback_data=encode_rank(self.poll.id, i)) \
                 for i in range(self.n_options + 1) ]
             button_lst.append( # button to keep current ranking, effectively going back
@@ -430,7 +430,7 @@ def poll_done_handler(bot, update, user_data):
     elif status == CreationStatus.WRITING_QUESTION:
         reason = "write a question"
     else:
-        reason = "start a poll with /start"
+        reason = "start a poll with /newpoll"
 
     bot.send_message(chat_id=update.message.chat.id,
         text="Cannot create poll. Please {}!".format(reason))
@@ -440,7 +440,7 @@ def cancel_handler(bot, update, user_data):
         user_data["create_status"] = CreationStatus.WAITING
 
         bot.send_message(chat_id=update.message.chat.id,
-            text="Cancelled! /start to try again",
+            text="Cancelled! /newpoll to try again",
             reply_markup=telegram.ReplyKeyboardRemove())
 
 def poll_list_handler(bot, update, user_data):
@@ -537,6 +537,7 @@ if __name__ == "__main__":
     updater = Updater(token=API_KEY)
     dispatcher = updater.dispatcher
 
+    dispatcher.add_handler(get_static_handler("start"))
     dispatcher.add_handler(get_static_handler("help"))
     dispatcher.add_handler(CommandHandler('feedback', feedback_handler, pass_args=True))
 
