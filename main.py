@@ -259,11 +259,12 @@ class Vote:
             return "ABSTAIN"
         else:
             ones = rank % 10
-            if ones == 1:
+            tens = (rank // 10) % 100
+            if ones == 1 and tens != 1:
                 return "{}st".format(rank)
-            elif ones == 2:
+            elif ones == 2 and tens != 1:
                 return "{}nd".format(rank)
-            elif ones == 3:
+            elif ones == 3 and tens != 1:
                 return "{}rd".format(rank)
             else:
                 return "{}th".format(rank)
