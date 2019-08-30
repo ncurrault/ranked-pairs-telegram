@@ -483,8 +483,20 @@ def message_handler(bot, update, user_data):
             bot.send_message(chat_id=update.message.chat.id, text=msg)
 
 def inline_query_handler(bot, update, user_data):
+    def simplify_str(s):
+        return "".join(c.lower() for c in s if c.isalpha())
+    def contains(needle, haystack):
+        simplify_str(haystack).find(simplify_str(needle)) != -1
+
+    query = update.inline_query.query
     out_polls = user_data.get("active_polls", [])
-    output_options = [ poll.get_inline_result() for poll in out_polls ]
+
+    output_options = [ poll.get_inline_result() \
+        for poll in out_polls \
+        if ( len(query) == 0 or contains(query, poll.question) ) and \
+        poll.ongoing \
+    ]
+    
     bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
 
 def callback_handler(bot, update, user_data):
