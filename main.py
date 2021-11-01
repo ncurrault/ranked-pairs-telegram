@@ -17,7 +17,7 @@ API_KEY = os.environ["BOT_TOKEN"]
 USERNAME = os.environ["BOT_USERNAME"]
 DM_URL = "https://t.me/{}".format(USERNAME[1:])
 
-PORT = 80
+PORT = os.environ.get("PORT", 80)
 
 def get_static_handler(command):
     """
@@ -555,7 +555,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO)
 
-updater.start_webhook(listen="0.0.0.0", port=int(PORT), url_path=API_KEY)
-updater.bot.setWebhook('https://telegram-ranked-pairs.herokuapp.com/' + API_KEY)
+updater.start_webhook(listen="0.0.0.0", port=int(PORT), url_path=API_KEY,
+    webhook_url='https://telegram-ranked-pairs.herokuapp.com/' + API_KEY)
 
 updater.idle()
