@@ -17,7 +17,7 @@ API_KEY = os.environ["BOT_TOKEN"]
 USERNAME = os.environ["BOT_USERNAME"]
 DM_URL = "https://t.me/{}".format(USERNAME[1:])
 
-PORT = int(os.environ.get('PORT', 5000))
+PORT = 80
 
 def get_static_handler(command):
     """
