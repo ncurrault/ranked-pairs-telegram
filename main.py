@@ -35,10 +35,7 @@ def get_static_handler(command):
         context.bot.send_message(chat_id=update.message.chat.id, text=response) ) )
 
 def handle_error(update, context):
-    try:
-        raise error
-    except TelegramError:
-        logging.getLogger(__name__).warning('TelegramError! %s caused by this update:\n%s', context.error, update)
+    logging.getLogger(__name__).warning('Error %s caused by this update:\n%s', context.error, update)
 
 class InvalidInput(Exception):
     pass
