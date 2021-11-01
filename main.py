@@ -13,12 +13,11 @@ import os
 import time
 from enum import Enum
 
-with open("data/token.txt", "r") as f:
-    API_KEY = f.read().rstrip()
+API_KEY = os.environ["BOT_TOKEN"]
+USERNAME = os.environ["BOT_USERNAME"]
+DM_URL = "https://t.me/{}".format(USERNAME[1:])
 
-with open("data/username.txt", "r") as f:
-    USERNAME = f.read().rstrip()
-    DM_URL = "http://t.me/{}".format(USERNAME)
+PORT = int(os.environ.get('PORT', 5000))
 
 def get_static_handler(command):
     """
@@ -32,37 +31,14 @@ def get_static_handler(command):
     response = f.read()
 
     return CommandHandler(command, \
-        ( lambda bot, update : \
-        bot.send_message(chat_id=update.message.chat.id, text=response) ) )
+        ( lambda update, context : \
+        context.bot.send_message(chat_id=update.message.chat.id, text=response) ) )
 
-# Credit: https://github.com/CaKEandLies/Telegram_Cthulhu/blob/master/cthulhu_game_bot.py#L63
-def feedback_handler(bot, update, args=None):
-    """
-    Store feedback from users in a text file.
-    """
-    if args and len(args) > 0:
-        feedback = open("data/feedback.txt", "a")
-        feedback.write("\n")
-        feedback.write(update.message.from_user.first_name)
-        feedback.write("\n")
-        # Records User ID so that if feature is implemented, can message them
-        # about it.
-        feedback.write(str(update.message.from_user.id))
-        feedback.write("\n")
-        feedback.write(" ".join(args))
-        feedback.write("\n")
-        feedback.close()
-        bot.send_message(chat_id=update.message.chat_id,
-                         text="Thanks for the feedback!")
-    else:
-        bot.send_message(chat_id=update.message.chat_id,
-                         text="Format: /feedback [feedback]")
-
-def handle_error(bot, update, error):
+def handle_error(update, context):
     try:
         raise error
     except TelegramError:
-        logging.getLogger(__name__).warning('TelegramError! %s caused by this update:\n%s', error, update)
+        logging.getLogger(__name__).warning('TelegramError! %s caused by this update:\n%s', context.error, update)
 
 class InvalidInput(Exception):
     pass
@@ -217,6 +193,7 @@ class Poll:
     def remove_vote(self, user):
         if user in self.votes:
             del self.votes[user]
+        self.update_winners_if_live()
 
     def call_election(self):
         ballots = [
@@ -399,40 +376,40 @@ class CreationStatus(Enum):
     WRITING_QUESTION = 3
     WRITING_OPTIONS = 4
 
-def new_poll_handler(bot, update, user_data):
+def new_poll_handler(update, context):
     if update.message.chat.type == "private":
-        user_data["create_status"] = CreationStatus.CHOOSING_RESULT_TYPE
+        context.user_data["create_status"] = CreationStatus.CHOOSING_RESULT_TYPE
         keyboard_options = telegram.ReplyKeyboardMarkup(keyboard=[["Live Results", "When Closed"]], resize_keyboard=True)
 
-        bot.send_message(chat_id=update.message.chat.id,
+        context.bot.send_message(chat_id=update.message.chat.id,
             text="Let's make a ranked-pairs poll! Send /cancel at any time to stop.")
-        bot.send_message(chat_id=update.message.chat.id,
+        context.bot.send_message(chat_id=update.message.chat.id,
             text="Would you like the poll results to appear live or only when it is closed?",
             reply_markup=keyboard_options)
     else:
         update.message.reply_markdown(text="Don't spam this chat, [slide into my DMs]({}) to start a poll.".format(DM_URL))
 
-def poll_done_handler(bot, update, user_data):
-    if "active_polls" not in user_data:
-        user_data["active_polls"] = set()
+def poll_done_handler(update, context):
+    if "active_polls" not in context.user_data:
+        context.user_data["active_polls"] = set()
 
-    status = user_data.get("create_status")
+    status = context.user_data.get("create_status")
     if status == CreationStatus.WRITING_OPTIONS:
-        if len(user_data["pending_options"]) >= 2:
-            poll = Poll(user_data["pending_question"],
-                user_data["pending_options"], user_data["pending_results_live"],
+        if len(context.user_data["pending_options"]) >= 2:
+            poll = Poll(context.user_data["pending_question"],
+                context.user_data["pending_options"], context.user_data["pending_results_live"],
                 update.message.from_user.id)
 
-            bot.send_message(chat_id=update.message.chat.id,
+            context.bot.send_message(chat_id=update.message.chat.id,
                 text="Successfully created poll!")
-            poll.send_to_owner(bot)
+            poll.send_to_owner(context.bot)
 
-            if "active_polls" not in user_data:
-                user_data["active_polls"] = set()
+            if "active_polls" not in context.user_data:
+                context.user_data["active_polls"] = set()
 
-            user_data["active_polls"].add(poll)
+            context.user_data["active_polls"].add(poll)
 
-            user_data["create_status"] = CreationStatus.WAITING # now waiting for another poll
+            context.user_data["create_status"] = CreationStatus.WAITING # now waiting for another poll
 
             return
         else:
@@ -444,64 +421,64 @@ def poll_done_handler(bot, update, user_data):
     else:
         reason = "start a poll with /newpoll"
 
-    bot.send_message(chat_id=update.message.chat.id,
+    context.bot.send_message(chat_id=update.message.chat.id,
         text="Cannot create poll. Please {}!".format(reason))
 
-def cancel_handler(bot, update, user_data):
-    if user_data.get("create_status") != CreationStatus.WAITING:
-        user_data["create_status"] = CreationStatus.WAITING
+def cancel_handler(update, context):
+    if context.user_data.get("create_status") != CreationStatus.WAITING:
+        context.user_data["create_status"] = CreationStatus.WAITING
 
-        bot.send_message(chat_id=update.message.chat.id,
+        context.bot.send_message(chat_id=update.message.chat.id,
             text="Cancelled! /newpoll to try again",
             reply_markup=telegram.ReplyKeyboardRemove())
 
-def poll_list_handler(bot, update, user_data):
+def poll_list_handler(update, context):
     if update.message.chat.type == "private":
-        polls = user_data.get("active_polls", [])
+        polls = context.user_data.get("active_polls", [])
         if len(polls) == 0:
             update.message.reply_text(text="You don't seem to have any polls! You can make one with /newpoll")
         else:
             update.message.reply_text(text="You have {} polls! Here they are:".format(len(polls)))
             for poll in polls:
-                poll.send_to_owner(bot)
+                poll.send_to_owner(context.bot)
     else:
         update.message.reply_markdown(text="Don't spam this chat, [slide into my DMs]({}) to use this command.".format(DM_URL))
 
-def message_handler(bot, update, user_data):
-    if "create_status" in user_data:
-        if user_data["create_status"] == CreationStatus.CHOOSING_RESULT_TYPE:
+def message_handler(update, context):
+    if "create_status" in context.user_data:
+        if context.user_data["create_status"] == CreationStatus.CHOOSING_RESULT_TYPE:
             if update.message.text in ("Live Results", "When Closed"):
-                user_data["pending_results_live"] = update.message.text == "Live Results"
-                user_data["create_status"] = CreationStatus.WRITING_QUESTION
+                context.user_data["pending_results_live"] = update.message.text == "Live Results"
+                context.user_data["create_status"] = CreationStatus.WRITING_QUESTION
 
-                bot.send_message(chat_id=update.message.chat.id,
+                context.bot.send_message(chat_id=update.message.chat.id,
                     text="Great! Now send the question for your poll",
                     reply_markup=telegram.ReplyKeyboardRemove())
             else:
                 update.message.reply_text("Please reply using the buttons")
                 return
             # reply_markup=telegram.ReplyKeyboardRemove()
-        elif user_data["create_status"] == CreationStatus.WRITING_QUESTION:
-            user_data["create_status"] = CreationStatus.WRITING_OPTIONS
-            user_data["pending_question"] = update.message.text
-            user_data["pending_options"] = []
-            bot.send_message(chat_id=update.message.chat.id,
+        elif context.user_data["create_status"] == CreationStatus.WRITING_QUESTION:
+            context.user_data["create_status"] = CreationStatus.WRITING_OPTIONS
+            context.user_data["pending_question"] = update.message.text
+            context.user_data["pending_options"] = []
+            context.bot.send_message(chat_id=update.message.chat.id,
                 text="Great! Now send the first option")
-        elif user_data["create_status"] == CreationStatus.WRITING_OPTIONS:
-            user_data["pending_options"].append(update.message.text)
+        elif context.user_data["create_status"] == CreationStatus.WRITING_OPTIONS:
+            context.user_data["pending_options"].append(update.message.text)
             msg = "Great! Now send another option"
-            if len(user_data["pending_options"]) >= 2:
+            if len(context.user_data["pending_options"]) >= 2:
                 msg = msg + " (or /done if there are no more options)"
-            bot.send_message(chat_id=update.message.chat.id, text=msg)
+            context.bot.send_message(chat_id=update.message.chat.id, text=msg)
 
-def inline_query_handler(bot, update, user_data):
+def inline_query_handler(update, context):
     def simplify_str(s):
         return "".join(c.lower() for c in s if c.isalnum())
     def contains(needle, haystack):
         return simplify_str(haystack).find(simplify_str(needle)) != -1
 
     query = update.inline_query.query
-    out_polls = user_data.get("active_polls", [])
+    out_polls = context.user_data.get("active_polls", [])
 
     output_options = [ poll.get_inline_result() \
         for poll in out_polls \
@@ -509,9 +486,9 @@ def inline_query_handler(bot, update, user_data):
         poll.ongoing \
     ]
 
-    bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
+    context.bot.answer_inline_query(update.inline_query.id, results=output_options, is_personal=True)
 
-def callback_handler(bot, update, user_data):
+def callback_handler(update, context):
     decoded_data = decode_callback(update.callback_query.data)
     req_type = decoded_data[0]
     poll = Poll.poll_of_id(decoded_data[1])
@@ -538,7 +515,7 @@ def callback_handler(bot, update, user_data):
         vote = poll.add_vote(user_id) # should generate vote if necessary
 
         if req_type == CallbackDataType.STARTING_VOTE:
-            vote.send_ballot(bot)
+            vote.send_ballot(context.bot)
         elif req_type == CallbackDataType.SELECTING_OPTION:
             opt = decoded_data[2]
             vote.tap_option(opt)
@@ -557,33 +534,31 @@ def callback_handler(bot, update, user_data):
     update.callback_query.answer()
 
 
-if __name__ == "__main__":
-    # TODO persistence (as soon as it's out of beta)
 
-    updater = Updater(token=API_KEY)
-    dispatcher = updater.dispatcher
+updater = Updater(token=API_KEY)
+dispatcher = updater.dispatcher
 
-    dispatcher.add_handler(get_static_handler("start"))
-    dispatcher.add_handler(get_static_handler("help"))
-    dispatcher.add_handler(CommandHandler('feedback', feedback_handler, pass_args=True))
+dispatcher.add_handler(get_static_handler("start"))
+dispatcher.add_handler(get_static_handler("help"))
 
-    dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler, pass_user_data=True))
-    dispatcher.add_handler(CommandHandler('done', poll_done_handler, pass_user_data=True))
-    dispatcher.add_handler(CommandHandler('mypolls', poll_list_handler, pass_user_data=True))
-    dispatcher.add_handler(CommandHandler('cancel', cancel_handler, pass_user_data=True))
+dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler))
+dispatcher.add_handler(CommandHandler('done', poll_done_handler))
+dispatcher.add_handler(CommandHandler('mypolls', poll_list_handler))
+dispatcher.add_handler(CommandHandler('cancel', cancel_handler))
 
-    dispatcher.add_handler(MessageHandler(Filters.text, message_handler, pass_user_data=True))
+dispatcher.add_handler(MessageHandler(Filters.text, message_handler))
 
-    dispatcher.add_handler(InlineQueryHandler(inline_query_handler, pass_user_data=True))
-    dispatcher.add_handler(CallbackQueryHandler(callback_handler, pass_user_data=True))
+dispatcher.add_handler(InlineQueryHandler(inline_query_handler))
+dispatcher.add_handler(CallbackQueryHandler(callback_handler))
 
-    dispatcher.add_error_handler(handle_error)
+dispatcher.add_error_handler(handle_error)
 
-    # allows viewing of exceptions
-    logging.basicConfig(
-        filename="data/bot.log",
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO) # not sure exactly how this works
+# allows viewing of exceptions
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO)
 
-    updater.start_polling()
-    updater.idle()
+updater.start_webhook(listen="0.0.0.0", port=int(PORT), url_path=API_KEY)
+updater.bot.setWebhook('https://telegram-ranked-pairs.herokuapp.com/' + API_KEY)
+
+updater.idle()
