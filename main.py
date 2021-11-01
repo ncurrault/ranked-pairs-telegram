@@ -531,31 +531,34 @@ def callback_handler(update, context):
     update.callback_query.answer()
 
 
+def main():
+    updater = Updater(token=API_KEY)
+    dispatcher = updater.dispatcher
 
-updater = Updater(token=API_KEY)
-dispatcher = updater.dispatcher
+    dispatcher.add_handler(get_static_handler("start"))
+    dispatcher.add_handler(get_static_handler("help"))
 
-dispatcher.add_handler(get_static_handler("start"))
-dispatcher.add_handler(get_static_handler("help"))
+    dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler))
+    dispatcher.add_handler(CommandHandler('done', poll_done_handler))
+    dispatcher.add_handler(CommandHandler('mypolls', poll_list_handler))
+    dispatcher.add_handler(CommandHandler('cancel', cancel_handler))
 
-dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler))
-dispatcher.add_handler(CommandHandler('done', poll_done_handler))
-dispatcher.add_handler(CommandHandler('mypolls', poll_list_handler))
-dispatcher.add_handler(CommandHandler('cancel', cancel_handler))
+    dispatcher.add_handler(MessageHandler(Filters.text, message_handler))
 
-dispatcher.add_handler(MessageHandler(Filters.text, message_handler))
+    dispatcher.add_handler(InlineQueryHandler(inline_query_handler))
+    dispatcher.add_handler(CallbackQueryHandler(callback_handler))
 
-dispatcher.add_handler(InlineQueryHandler(inline_query_handler))
-dispatcher.add_handler(CallbackQueryHandler(callback_handler))
+    dispatcher.add_error_handler(handle_error)
 
-dispatcher.add_error_handler(handle_error)
+    # allows viewing of exceptions
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO)
 
-# allows viewing of exceptions
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO)
+    updater.start_webhook(listen="0.0.0.0", port=int(PORT), url_path=API_KEY,
+        webhook_url='https://telegram-ranked-pairs.herokuapp.com/' + API_KEY)
 
-updater.start_webhook(listen="0.0.0.0", port=int(PORT), url_path=API_KEY,
-    webhook_url='https://telegram-ranked-pairs.herokuapp.com/' + API_KEY)
+    updater.idle()
 
-updater.idle()
+if __name__ == "__main__":
+    main()
