@@ -532,6 +532,7 @@ def main():
 
     dispatcher.add_handler(get_static_handler("start"))
     dispatcher.add_handler(get_static_handler("help"))
+    dispatcher.add_handler(get_static_handler("feedback"))
 
     dispatcher.add_handler(CommandHandler('newpoll', new_poll_handler))
     dispatcher.add_handler(CommandHandler('done', poll_done_handler))
