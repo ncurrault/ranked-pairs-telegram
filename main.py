@@ -109,12 +109,6 @@ class Poll:
         self.option_ranks = [1] * len(options)
 
         self.id = str(uuid.uuid4()) # generate random id for each poll that's unreasonably hard to guess
-        Poll.active_polls[self.id] = self
-
-    active_polls = {}
-    @classmethod
-    def poll_of_id(cls, id):
-        return Poll.active_polls.get(id)
 
     def get_public_buttons(self):
         if not self.ongoing:
@@ -396,6 +390,7 @@ def poll_done_handler(update, context):
             poll = Poll(context.user_data["pending_question"],
                 context.user_data["pending_options"], context.user_data["pending_results_live"],
                 update.message.from_user.id)
+            context.bot_data[poll.id] = poll
 
             context.bot.send_message(chat_id=update.message.chat.id,
                 text="Successfully created poll!")
@@ -488,7 +483,7 @@ def inline_query_handler(update, context):
 def callback_handler(update, context):
     decoded_data = decode_callback(update.callback_query.data)
     req_type = decoded_data[0]
-    poll = Poll.poll_of_id(decoded_data[1])
+    poll = context.bot_data.get(decoded_data[1])
     user_id = update.callback_query.from_user.id
 
     if req_type == CallbackDataType.CLOSING_POLL:
