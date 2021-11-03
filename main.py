@@ -2,6 +2,8 @@ import telegram
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, \
     InlineQueryHandler, CallbackQueryHandler
 from telegram.error import TelegramError
+from postgrespersistence import PostgresPersistence
+
 import ranked_pairs
 
 import logging
@@ -527,7 +529,9 @@ def callback_handler(update, context):
 
 
 def main():
-    updater = Updater(token=API_KEY)
+    db_persistence = PostgresPersistence(postgres_url=os.environ["DATABASE_URL"])
+    updater = Updater(token=API_KEY, persistence=db_persistence)
+
     dispatcher = updater.dispatcher
 
     dispatcher.add_handler(get_static_handler("start"))
